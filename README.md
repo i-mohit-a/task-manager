@@ -1,105 +1,118 @@
 # Task Manager
 
-A keyboard-driven local task manager built with Python (Starlette) and SQLite. Runs as a background service accessible via browser at `http://127.0.0.1:8000`.
+A keyboard-driven local task manager built with Python (Starlette) and SQLite. Runs as a background service accessible via browser at a local domain.
+
+---
+
+## Requirements
+
+- **macOS** (uses launchd for production background service)
+- **Python 3.8+**
+- **Caddy** (reverse proxy — handles local domain routing)
+
+Install Caddy via Homebrew:
+
+```bash
+brew install caddy
+```
 
 ---
 
 ## Project Structure
 
 ```
-task-manager-v0/
-├── app.py                        # Starlette web app, routes
-├── database.py                   # SQLite database layer
-├── requirements.txt              # Python dependencies
-├── deploy.sh                     # Single script for local dev and production deploy
-├── com.local.taskmanager.plist   # macOS LaunchAgent (auto-start at login)
+task-manager/
+├── app.py                # Starlette web app, routes
+├── database.py           # SQLite database layer
+├── requirements.txt      # Python dependencies
+├── deploy.sh             # Single script for dev and production
 └── templates/
-    ├── base.html                 # Base layout + CSS
-    ├── index.html                # Main task view + keyboard JS
-    ├── archive.html              # Archived tasks
-    ├── flags.html                # Flag listing
-    └── projects.html             # Project management
+    ├── base.html         # Base layout + CSS
+    ├── index.html        # Main task view + keyboard JS
+    ├── archive.html      # Archived tasks
+    ├── flags.html        # Flag listing
+    └── projects.html     # Project management
 ```
 
 ---
 
-## Setup (first time)
-
-### 1. Create and activate a virtual environment
+## Quick Start (Dev)
 
 ```bash
-cd task-manager-v0
+git clone https://github.com/i-mohit-a/task-manager.git
+cd task-manager
 python3 -m venv venv
 source venv/bin/activate
-```
-
-### 2. Install dependencies
-
-```bash
 pip install -r requirements.txt
-```
-
----
-
-## Running the App
-
-All server control goes through `deploy.sh`.
-
-### Local / Dev
-
-Start the server in the background from the project folder:
-
-```bash
 ./deploy.sh --dev --start
 ```
 
-Stop it:
+On first run, `deploy.sh` will add entries to `/etc/hosts` and will prompt for your **sudo password** once to do so.
+
+Open: **http://dev.taskmanager.local**
+
+To stop:
 
 ```bash
 ./deploy.sh --dev --stop
 ```
 
-`--dev` mode automatically sets `TASKMANAGER_DEV=1`, so the database is stored locally in the project folder as `tasks.db`.
-
-Logs are written to:
-- `/tmp/taskmanager.log` — stdout
-- `/tmp/taskmanager.err` — stderr
-
-Open the app at http://127.0.0.1:8000
-
 ---
 
-### Production (macOS background service)
-
-Deploys to `~/.local/taskmanager/` and installs a launchd LaunchAgent that auto-starts at login and keeps the server alive.
+## Production Deploy (macOS background service)
 
 ```bash
 ./deploy.sh --prd
 ```
 
 This will:
-- Stop the existing service if running
-- Back up current installed files
+- Add `/etc/hosts` entries (prompts for sudo once if not already set)
 - Copy all app files to `~/.local/taskmanager/`
 - Create a virtual environment and install dependencies (first run only)
-- Install the LaunchAgent plist to `~/Library/LaunchAgents/` (first run only)
-- Start the service via launchd
+- Generate and install a launchd LaunchAgent for the app (auto-starts at login)
+- Generate and install a launchd LaunchAgent for Caddy (auto-starts at login)
+- Start both services
 
-Open the app at http://127.0.0.1:8000
+Open: **http://taskmanager.local**
 
 To manage the production service manually:
 
 ```bash
 # Stop
 launchctl unload ~/Library/LaunchAgents/com.local.taskmanager.plist
+launchctl unload ~/Library/LaunchAgents/com.local.taskmanager-caddy.plist
 
 # Start
 launchctl load ~/Library/LaunchAgents/com.local.taskmanager.plist
+launchctl load ~/Library/LaunchAgents/com.local.taskmanager-caddy.plist
 
 # View logs
 cat /tmp/taskmanager.log
 cat /tmp/taskmanager.err
+cat /tmp/taskmanager-caddy.log
 ```
+
+---
+
+## URLs
+
+| Mode | App URL | Port |
+|------|---------|------|
+| Dev | http://dev.taskmanager.local | 8001 (internal) |
+| Production | http://taskmanager.local | 8000 (internal) |
+
+Both modes can run simultaneously. Caddy routes each domain to the correct port.
+
+---
+
+## Pages
+
+| Page | Path |
+|------|------|
+| Tasks (home) | `/` |
+| Projects | `/projects` |
+| Flags | `/flags` |
+| Archive | `/archive` |
 
 ---
 
@@ -107,21 +120,10 @@ cat /tmp/taskmanager.err
 
 | Mode | Location |
 |------|----------|
-| Default | `~/Library/Application Support/TaskManager/tasks.db` |
-| Dev (with `TASKMANAGER_DEV=1`) | `tasks.db` in project directory |
+| Dev (`TASKMANAGER_DEV=1`) | `tasks.db` in project directory |
+| Production | `~/Library/Application Support/TaskManager/tasks.db` |
 
 Schema is auto-created on first run. Migrations are applied automatically on startup.
-
----
-
-## Pages
-
-| Page | URL |
-|------|-----|
-| Tasks (home) | http://127.0.0.1:8000/ |
-| Projects | http://127.0.0.1:8000/projects |
-| Flags | http://127.0.0.1:8000/flags |
-| Archive | http://127.0.0.1:8000/archive |
 
 ---
 
@@ -143,13 +145,13 @@ Each task belongs to a project and can have:
 
 - a title
 - a priority: `critical`, `major`, or `minor` (default: `minor`)
-- an effort estimate in hours
+- an effort estimate in hours (supports decimals, e.g. `~1.5h`)
 - a start date
 - a due date
 - one or more flags (tags)
 - subtasks (up to 3 levels deep)
 
-Tasks are displayed with a one-letter priority badge (`c`, `m`, or `m`), followed by any flags, the title, and then the effort and dates as muted metadata. The creation date is always shown. When completed, the completion date is shown instead.
+Tasks are displayed with a one-letter priority badge (`c`, `M`, or `m`), followed by any flags, the title, and then effort and dates as muted metadata. The creation date is always shown. When completed, the completion date is shown instead.
 
 Incomplete tasks appear before completed tasks within each list. Within each group the order is the manually set position (persisted across reloads).
 
@@ -168,7 +170,7 @@ task title [flag1] [flag2] !priority ~Nh >YYYY-MM-DD <YYYY-MM-DD
 | Title | plain text | `Fix signup bug` | everything not matched by other tokens |
 | Flag | `[name]` | `[auth]` `[backend]` | any word in brackets; multiple allowed |
 | Priority | `!critical` `!major` `!minor` | `!critical` | prefix with `!`; omit for default `minor` |
-| Effort | `~Nh` | `~4h` | hours prefixed with `~` |
+| Effort | `~Nh` | `~4h` `~1.5h` | hours prefixed with `~`; decimals supported |
 | Start date | `>YYYY-MM-DD` | `>2026-03-15` | shown as `>date` in the task row |
 | Due date | `<YYYY-MM-DD` | `<2026-03-31` | shown as `<date` in the task row |
 
@@ -281,7 +283,7 @@ Type a task using the inline syntax and press Enter to add it. The new task appe
 
 ### Keyboard Shortcuts
 
-All shortcuts are available when no input is focused.
+All shortcuts are available when no input is focused. Double-key shortcuts (`dd`, `ee`, `ss`, `xx`, `nn`) require both keypresses within 500ms.
 
 | Key | Action |
 |-----|--------|
@@ -298,5 +300,3 @@ All shortcuts are available when no input is focused.
 | `xx` | Archive task |
 | `nn` | Focus quick-add input for current project |
 | `Escape` | Clear selection / cancel edit or subtask input |
-
-Double-key shortcuts (`dd`, `ee`, `ss`, `xx`, `nn`) require both keypresses within 500ms.
