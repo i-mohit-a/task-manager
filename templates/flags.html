@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1># Flags</h1>
+
+{% if flags %}
+<ul class="task-list">
+    {% for flag in flags %}
+    <li class="task-item"><span class="flag flag-color-{{ flag|flag_color }}">{{ flag }}</span></li>
+    {% endfor %}
+</ul>
+{% else %}
+<p class="meta">No flags created yet. Add flags when creating or editing tasks.</p>
+{% endif %}
+
+<p><a href="/">Back to tasks</a></p>
+{% endblock %}

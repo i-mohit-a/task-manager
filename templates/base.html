@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Manager</title>
+    <style>
+        body {
+            font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Mono", "Droid Sans Mono", monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            padding-bottom: 60px;
+            background: #fafafa;
+            color: #333;
+        }
+
+        a {
+            color: #0066cc;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        h1 {
+            font-size: 18px;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 8px;
+        }
+
+        .project-header {
+            font-size: 16px;
+            margin-top: 24px;
+            margin-bottom: 8px;
+            padding: 4px 0;
+            border-bottom: 1px dashed #999;
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+
+        .sort-controls {
+            font-size: 11px;
+        }
+
+        .sort-controls a {
+            margin-left: 8px;
+            color: #888;
+        }
+
+        .sort-controls a:hover {
+            color: #0066cc;
+        }
+
+        .sort-input {
+            font-family: inherit;
+            font-size: 11px;
+            padding: 2px 4px;
+            border: 1px solid #ccc;
+            width: 80px;
+        }
+
+        .task-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .task-list .task-list {
+            margin-top: 0;
+        }
+
+        .task-item {
+            padding: 0;
+        }
+
+        .task-row {
+            padding: 4px 0;
+            border-bottom: 1px dotted #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+
+        .task-content {
+            flex: 1;
+        }
+
+        .actions-right {
+            font-size: 10px;
+            white-space: nowrap;
+            margin-left: 12px;
+            color: #aaa;
+            display: flex;
+            gap: 3px;
+            align-items: baseline;
+        }
+
+        .actions-right a {
+            color: #7ab3d4;
+        }
+
+        .actions-right a:hover {
+            color: #3a7fa8;
+            text-decoration: none;
+        }
+
+        .task-row.completed {
+            color: #888;
+        }
+
+        .task-row.completed .task-content {
+            text-decoration: line-through;
+        }
+
+        .indent-1 { padding-left: 24px; }
+        .indent-2 { padding-left: 48px; }
+        .indent-3 { padding-left: 72px; }
+
+        .priority-badge {
+            padding: 1px 4px;
+            font-size: 12px;
+            margin-left: 4px;
+            border-radius: 2px;
+        }
+
+        .priority-critical { background: #f2d4d4; color: #8b5a5a; }
+        .priority-major { background: #f2e8d4; color: #8b7a5a; }
+        .priority-minor { background: #e4e8e8; color: #6b6b6b; }
+
+        .flag {
+            padding: 1px 4px;
+            font-size: 12px;
+            margin-left: 4px;
+            border-radius: 2px;
+        }
+
+        .flag-color-0 { background: #d4e0d4; color: #4a6b4a; }
+        .flag-color-1 { background: #d4d4e0; color: #4a5a6b; }
+        .flag-color-2 { background: #e0d4d4; color: #6b4a4a; }
+        .flag-color-3 { background: #e0e4d4; color: #6b6444; }
+        .flag-color-4 { background: #d4e4e0; color: #4a6b68; }
+        .flag-color-5 { background: #e4d4e8; color: #6a4a68; }
+        .flag-color-6 { background: #d4e0d4; color: #5a6b40; }
+        .flag-color-7 { background: #e0b4e8; color: #5c4a6b; }
+
+        .meta {
+            color: #888;
+            font-size: 12px;
+        }
+
+        .meta.date {
+            margin-left: 8px;
+            color: #aaa;
+        }
+
+        .meta.done-date {
+            color: #7a9a7a;
+        }
+
+        [data-meta]::after {
+            content: attr(data-meta);
+        }
+
+        [data-done-date]::after {
+            content: attr(data-done-date);
+        }
+
+        .actions {
+            font-size: 12px;
+        }
+
+        .actions a {
+            margin-right: 8px;
+        }
+
+        form {
+            margin: 16px 0;
+            padding: 0;
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+        }
+
+        form label {
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        form input[type="text"],
+        form input[type="number"],
+        form select {
+            font-family: inherit;
+            font-size: 14px;
+            padding: 4px 8px;
+            margin-bottom: 8px;
+            border: 1px solid #ccc;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        form button {
+            font-family: inherit;
+            font-size: 14px;
+            padding: 6px 12px;
+            color: #fff;
+            background: #333;
+            border: none;
+            cursor: pointer;
+        }
+
+        form button:hover {
+            background: #555;
+        }
+
+        .inline-form {
+            display: inline;
+        }
+
+        .inline-form input,
+        .inline-form button {
+            display: inline;
+            width: auto;
+            margin: 0;
+            padding: 2px 8px;
+        }
+
+        .quick-add {
+            margin: 4px 0;
+            padding: 0;
+            background: transparent;
+            border: none;
+        }
+
+        .quick-add input {
+            font-family: inherit;
+            font-size: 14px;
+            padding: 4px 8px;
+            border: 1px solid #ccc;
+            background: transparent;
+            width: 480px;
+        }
+
+        .quick-add input:focus {
+            border-color: #999;
+            outline: none;
+            background: #fff;
+        }
+
+        .inline-edit {
+            font-family: inherit;
+            font-size: 14px;
+            padding: 2px 6px;
+            border: 1px solid #99a;
+            background: #fff;
+            width: 500px;
+            outline: none;
+        }
+
+        .subtask-input-row {
+            padding: 4px 0;
+            border-bottom: 1px dotted #ddd;
+        }
+
+        .message {
+            padding: 8px;
+            margin: 8px 0;
+            background: #ffffcc;
+            border: 1px solid #cccc00;
+        }
+
+        .nav {
+            margin-bottom: 16px;
+        }
+
+        .nav a {
+            margin-right: 16px;
+        }
+
+        .cursor-indicator {
+            display: inline-block;
+            width: 16px;
+        }
+
+        .cursor-indicator::before {
+            content: '-';
+            color: #666;
+        }
+
+        .task-row.cursor .cursor-indicator::before {
+            content: '>';
+            color: #333;
+            font-weight: bold;
+        }
+
+        .task-row.selected {
+            background: #e8f0ff;
+        }
+
+        .task-row.selected .cursor-indicator::before {
+            content: '*';
+            color: #0066cc;
+            font-weight: bold;
+        }
+
+        .task-row.cursor.selected .cursor-indicator::before {
+            content: '>';
+            color: #0066cc;
+            font-weight: bold;
+        }
+
+        .kbd-hint {
+            position: fixed;
+            bottom: 16px;
+            right: 16px;
+            font-size: 11px;
+            color: #888;
+            background: #f5f5f5;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .kbd-hint kbd {
+            background: #e8e8e8;
+            padding: 1px 4px;
+            border-radius: 2px;
+            font-family: inherit;
+        }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <a href="/">Home</a>
+        <a href="/projects">Projects</a>
+        <a href="/flags">Flags</a>
+        <a href="/archive">Archive</a>
+    </div>
+    {% block content %}{% endblock %}
+    {% block scripts %}{% endblock %}
+</body>
+</html>

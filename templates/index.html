@@ -1,0 +1,1065 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Task Manager</h1>
+
+{% for project in projects %}
+<div class="project-header">
+    ## {{ project.name }}
+    <span class="sort-controls">
+        <a href="#" class="sort-link" data-project-id="{{ project.id }}" data-sort="priority">[sort:priority]</a>
+        <a href="#" class="sort-link" data-project-id="{{ project.id }}" data-sort="effort">[sort:effort]</a>
+        <a href="#" class="sort-link" data-project-id="{{ project.id }}" data-sort="tag">[sort:tag]</a>
+    </span>
+</div>
+
+{% set tasks = task_trees.get(project.id, []) %}
+{% if tasks %}
+<ul class="task-list" data-project-id="{{ project.id }}">
+    {% for task in tasks recursive %}
+    <li class="task-item">
+        <div class="task-row indent-{{ task.level }}{% if task.completed_at %} completed{% endif %}" data-task-id="{{ task.id }}" data-title="{{ task.title }}" data-priority="{{ task.priority }}" data-effort="{{ task.effort_hours }}" data-flags="{{ task.flags|default('', true) }}" data-start-date="{{ task.start_date or '' }}" data-due-date="{{ task.due_date or '' }}" data-level="{{ task.level }}" data-project-id="{{ task.project_id }}">
+            <span class="task-content"><span class="cursor-indicator"></span><span class="priority-badge priority-{{ task.priority }}">{{ task.priority[:1] }}</span>{% if task.flags %}{% for flag_name in task.flags.split(',') %}<span class="flag flag-color-{{ flag_name|flag_color }}">{{ flag_name }}</span>{% endfor %}{% endif %} {{ task.title }}{% if task.effort_hours %} <span class="meta">{{ task.effort_hours }}h</span>{% endif %}{% if task.start_date %} <span class="meta">&gt;{{ task.start_date }}</span>{% endif %}{% if task.due_date %} <span class="meta">&lt;{{ task.due_date }}</span>{% endif %} <span class="meta" data-meta="{{ task.created_at[:10] }}"></span>{% if task.completed_at %} <span class="meta done-date" data-done-date="{{ task.completed_at[:10] }}"></span>{% endif %}</span>
+            <span class="actions-right">
+                <a href="#" class="toggle-link" data-task-id="{{ task.id }}">{% if task.completed_at %}[undo]{% else %}[done]{% endif %}</a>
+                <a href="#" class="edit-link" data-task-id="{{ task.id }}">[edit]</a>
+                <a href="#" class="delete-link" data-task-id="{{ task.id }}">[x]</a>
+            </span>
+        </div>
+        {% if task.children %}
+        <ul class="task-list">
+            {{ loop(task.children) }}
+        </ul>
+        {% endif %}
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p class="meta">No tasks yet.</p>
+{% endif %}
+
+<form class="quick-add" action="/projects/{{ project.id }}/tasks/quick" method="post">
+    <input type="text" name="title" placeholder="- task [flag] !priority ~4h >start <due" autocomplete="off">
+</form>
+
+{% else %}
+<p class="meta">No projects yet. <a href="/projects">Create one.</a></p>
+{% endfor %}
+
+<div class="kbd-hint">
+    <kbd>dd</kbd> done | <kbd>ee</kbd> edit | <kbd>ss</kbd> sub | <kbd>xx</kbd> archive | <kbd>nn</kbd> new | <kbd>alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> move | <kbd>shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> select
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    var rows = document.querySelectorAll('.task-row[data-task-id]');
+    var cursor = 0;
+    var selectionAnchor = null;
+    var pending = '';
+    var pendingTimer = null;
+    var editingRow = null;
+    var subtaskInput = null;
+
+    function refreshRows() {
+        rows = document.querySelectorAll('.task-row[data-task-id]');
+    }
+
+    function clearSelection() {
+        rows.forEach(function(row) {
+            row.classList.remove('selected');
+        });
+        selectionAnchor = null;
+    }
+
+    function getSelectedRows() {
+        var selected = [];
+        rows.forEach(function(row, i) {
+            if (row.classList.contains('selected')) {
+                selected.push({ row: row, index: i });
+            }
+        });
+        if (selected.length === 0 && rows[cursor]) {
+            selected.push({ row: rows[cursor], index: cursor });
+        }
+        return selected;
+    }
+
+    function updateSelection(newCursor, withShift) {
+        if (withShift) {
+            if (selectionAnchor === null) {
+                selectionAnchor = newCursor;
+            }
+            var start = Math.min(selectionAnchor, newCursor);
+            var end = Math.max(selectionAnchor, newCursor);
+            rows.forEach(function(row, i) {
+                row.classList.toggle('selected', i >= start && i <= end);
+            });
+        } else {
+            clearSelection();
+        }
+    }
+
+    function updateCursor() {
+        if (rows.length === 0) return;
+        cursor = Math.max(cursor, 0);
+        cursor = Math.min(cursor, rows.length - 1);
+        rows.forEach(function(row, i) {
+            row.classList.toggle('cursor', i === cursor);
+        });
+        if (rows[cursor]) {
+            rows[cursor].scrollIntoView({ block: 'nearest' });
+        }
+    }
+
+    function getCurrentRow() {
+        return rows[cursor];
+    }
+
+    function getTaskId() {
+        var row = getCurrentRow();
+        return row ? row.getAttribute('data-task-id') : null;
+    }
+
+    function clearPending() {
+        pending = '';
+    }
+
+    function buildTaskString(row) {
+        var title = row.getAttribute('data-title');
+        var priority = row.getAttribute('data-priority');
+        var effort = row.getAttribute('data-effort');
+        var flags = row.getAttribute('data-flags');
+        var startDate = row.getAttribute('data-start-date');
+        var dueDate = row.getAttribute('data-due-date');
+
+        var str = title;
+        if (flags) {
+            flags.split(',').forEach(function(f) {
+                if (f.trim()) str = '[' + f.trim() + '] ' + str;
+            });
+        }
+        if (priority && priority !== 'minor') {
+            str = str + ' !' + priority;
+        }
+        if (effort && effort !== '0') {
+            str = str + ' ~' + effort + 'h';
+        }
+        if (startDate) str = str + ' >' + startDate;
+        if (dueDate) str = str + ' <' + dueDate;
+        return str;
+    }
+
+    function renderTaskHTML(task) {
+        var flagsHtml = '';
+        if (task.flags_list) {
+            task.flags_list.forEach(function(f) {
+                flagsHtml += '<span class="flag flag-color-' + f.color + '">' + f.name + '</span>';
+            });
+        }
+
+        var effortHtml = task.effort_hours ? ' <span class="meta">' + task.effort_hours + 'h</span>' : '';
+        var startDateHtml = task.start_date ? ' <span class="meta">&gt;' + task.start_date + '</span>' : '';
+        var dueDateHtml = task.due_date ? ' <span class="meta">&lt;' + task.due_date + '</span>' : '';
+        var completedClass = task.completed_at ? ' completed' : '';
+        var doneText = task.completed_at ? '[undo]' : '[done]';
+        var editText = '[edit]';
+        var deleteText = '[x]';
+        var doneDate = task.completed_at ? ' <span class="meta done-date" data-done-date="' + task.completed_at.substring(0, 10) + '"></span>' : '';
+
+        return '<li class="task-item">' +
+            '<div class="task-row indent-' + task.level + completedClass + '" ' +
+            'data-task-id="' + task.id + '" ' +
+            'data-title="' + task.title.replace(/"/g, '&quot;') + '" ' +
+            'data-priority="' + task.priority + '" ' +
+            'data-effort="' + task.effort_hours + '" ' +
+            'data-flags="' + (task.flags || '') + '" ' +
+            'data-start-date="' + (task.start_date || '') + '" ' +
+            'data-due-date="' + (task.due_date || '') + '" ' +
+            'data-level="' + task.level + '" ' +
+            'data-project-id="' + task.project_id + '">' +
+            '<span class="task-content">' +
+            '<span class="cursor-indicator"></span>' +
+            '<span class="priority-badge priority-' + task.priority + '">' + task.priority.charAt(0) + '</span>' +
+            flagsHtml +
+            ' ' + task.title +
+            effortHtml +
+            startDateHtml +
+            dueDateHtml +
+            ' <span class="meta" data-meta="' + task.created_at.substring(0, 10) + '"></span>' +
+            doneDate +
+            '</span>' +
+            '<span class="actions-right">' +
+            '<a href="#" class="toggle-link" data-task-id="' + task.id + '">' + doneText + '</a>' +
+            '<a href="#" class="edit-link" data-task-id="' + task.id + '">' + editText + '</a>' +
+            '<a href="#" class="delete-link" data-task-id="' + task.id + '">' + deleteText + '</a>' +
+            '</span>' +
+            '</div>' +
+            '</li>';
+    }
+
+    function updateTaskRow(row, task) {
+        var flagsHtml = '';
+        if (task.flags_list) {
+            task.flags_list.forEach(function(f) {
+                flagsHtml += '<span class="flag flag-color-' + f.color + '">' + f.name + '</span>';
+            });
+        }
+
+        var effortHtml = task.effort_hours ? ' <span class="meta">' + task.effort_hours + 'h</span>' : '';
+        var startDateHtml = task.start_date ? ' <span class="meta">&gt;' + task.start_date + '</span>' : '';
+        var dueDateHtml = task.due_date ? ' <span class="meta">&lt;' + task.due_date + '</span>' : '';
+        var doneDate = task.completed_at ? ' <span class="meta done-date" data-done-date="' + task.completed_at.substring(0, 10) + '"></span>' : '';
+
+        row.setAttribute('data-title', task.title);
+        row.setAttribute('data-priority', task.priority);
+        row.setAttribute('data-effort', task.effort_hours);
+        row.setAttribute('data-flags', task.flags || '');
+        row.setAttribute('data-start-date', task.start_date || '');
+        row.setAttribute('data-due-date', task.due_date || '');
+
+        if (task.completed_at) {
+            row.classList.add('completed');
+        } else {
+            row.classList.remove('completed');
+        }
+
+        row.querySelector('.task-content').innerHTML =
+            '<span class="cursor-indicator"></span>' +
+            '<span class="priority-badge priority-' + task.priority + '">' + task.priority.charAt(0) + '</span>' +
+            flagsHtml +
+            ' ' + task.title +
+            effortHtml +
+            startDateHtml +
+            dueDateHtml +
+            ' <span class="meta" data-meta="' + task.created_at.substring(0, 10) + '"></span>' +
+            doneDate;
+
+        row.querySelector('.actions-right').innerHTML =
+            '<a href="#" class="toggle-link" data-task-id="' + task.id + '">' + (task.completed_at ? '[undo]' : '[done]') + '</a>' +
+            '<a href="#" class="edit-link" data-task-id="' + task.id + '">[edit]</a>' +
+            '<a href="#" class="delete-link" data-task-id="' + task.id + '">[x]</a>';
+
+        bindRowEvents(row);
+    }
+
+    function bindRowEvents(row) {
+        var toggleLink = row.querySelector('.toggle-link');
+        var editLink = row.querySelector('.edit-link');
+        var deleteLink = row.querySelector('.delete-link');
+
+        if (toggleLink) {
+            toggleLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                toggleTask(this.getAttribute('data-task-id'));
+            });
+        }
+
+        if (editLink) {
+            editLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                var taskId = this.getAttribute('data-task-id');
+                for (var i = 0; i < rows.length; i++) {
+                    if (rows[i].getAttribute('data-task-id') === taskId) {
+                        cursor = i;
+                        updateCursor();
+                        startEdit();
+                        break;
+                    }
+                }
+            });
+        }
+
+        if (deleteLink) {
+            deleteLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                var taskId = this.getAttribute('data-task-id');
+                archiveTask(taskId);
+            });
+        }
+    }
+
+    function toggleTask(taskId) {
+        fetch('/tasks/' + taskId + '/toggle', {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                data.affected_ids.forEach(function(id) {
+                    var row = document.querySelector('.task-row[data-task-id="' + id + '"]');
+                    if (row) {
+                        var toggleLink = row.querySelector('.toggle-link');
+                        if (data.completed_at) {
+                            row.classList.add('completed');
+                            if (toggleLink) toggleLink.textContent = '[undo]';
+                            var content = row.querySelector('.task-content');
+                            var existingDone = content.querySelector('.done-date');
+                            var doneSpan = document.createElement('span');
+                            doneSpan.className = 'meta done-date';
+                            doneSpan.setAttribute('data-done-date', data.completed_at.substring(0, 10));
+                            if (existingDone) {
+                                existingDone.setAttribute('data-done-date', data.completed_at.substring(0, 10));
+                            } else {
+                                content.appendChild(document.createTextNode(' '));
+                                content.appendChild(doneSpan);
+                            }
+                        } else {
+                            row.classList.remove('completed');
+                            if (toggleLink) toggleLink.textContent = '[done]';
+                            var doneDate = row.querySelector('.done-date');
+                            if (doneDate) doneDate.remove();
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    function archiveTask(taskId) {
+        fetch('/tasks/' + taskId + '/archive', {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                data.archived_ids.forEach(function(id) {
+                    var row = document.querySelector('.task-row[data-task-id="' + id + '"]');
+                    if (row) {
+                        var taskItem = row.closest('.task-item');
+                        if (taskItem) taskItem.remove();
+                    }
+                });
+                refreshRows();
+                updateCursor();
+            }
+        });
+    }
+
+    function startEdit() {
+        if (editingRow || rows.length === 0) return;
+        var row = getCurrentRow();
+        if (!row) return;
+        editingRow = row;
+
+        var taskId = row.getAttribute('data-task-id');
+        var content = row.querySelector('.task-content');
+        var actions = row.querySelector('.actions-right');
+        var originalHTML = content.innerHTML;
+        var actionsHTML = actions.innerHTML;
+
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'inline-edit';
+        input.value = buildTaskString(row);
+
+        content.innerHTML = '<span class="cursor-indicator"></span>';
+        content.appendChild(input);
+        actions.innerHTML = '<span class="meta">Enter to save, Esc to cancel</span>';
+
+        function cleanup() {
+            content.innerHTML = originalHTML;
+            actions.innerHTML = actionsHTML;
+            editingRow = null;
+            bindRowEvents(row);
+        }
+
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var formData = new FormData();
+                formData.append('content', input.value);
+
+                fetch('/tasks/' + taskId + '/inline-edit', {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json' },
+                    body: formData
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.success && data.task) {
+                        updateTaskRow(row, data.task);
+                    } else {
+                        cleanup();
+                    }
+                    editingRow = null;
+                })
+                .catch(function() {
+                    cleanup();
+                });
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cleanup();
+            }
+        });
+
+        input.addEventListener('blur', function() {
+            setTimeout(function() {
+                if (editingRow === row) cleanup();
+            }, 100);
+        });
+
+        input.focus();
+        input.select();
+    }
+
+    function startSubtask() {
+        if (subtaskInput || rows.length === 0) return;
+        var row = getCurrentRow();
+        if (!row) return;
+
+        var taskId = row.getAttribute('data-task-id');
+        var level = parseInt(row.getAttribute('data-level'), 10);
+
+        if (level >= 3) {
+            alert('Maximum subtask depth reached');
+            return;
+        }
+
+        var container = document.createElement('div');
+        container.className = 'subtask-input-row indent-' + (level + 1);
+        container.innerHTML = '<span class="cursor-indicator"></span>';
+
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'inline-edit';
+        input.placeholder = 'subtask [flag] priority -hours';
+        container.appendChild(input);
+
+        var hint = document.createElement('span');
+        hint.className = 'meta';
+        hint.style.marginLeft = '8px';
+        hint.textContent = 'Enter to add, Esc to cancel';
+        container.appendChild(hint);
+
+        var taskItem = row.closest('.task-item');
+        var childList = taskItem.querySelector(':scope > .task-list');
+        if (childList) {
+            childList.insertBefore(container, childList.firstChild);
+        } else {
+            var newList = document.createElement('ul');
+            newList.className = 'task-list';
+            newList.appendChild(container);
+            taskItem.appendChild(newList);
+        }
+
+        subtaskInput = container;
+        input.focus();
+
+        function cleanup() {
+            container.remove();
+            subtaskInput = null;
+        }
+
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (!input.value.trim()) { cleanup(); return; }
+                var formData = new FormData();
+                formData.append('content', input.value);
+
+                fetch('/tasks/' + taskId + '/inline-subtask', {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json' },
+                    body: formData
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.success && data.task) {
+                        var tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = renderTaskHTML(data.task);
+                        var newTaskItem = tempDiv.firstChild;
+                        var targetList = taskItem.querySelector(':scope > .task-list');
+                        if (targetList) {
+                            targetList.insertBefore(newTaskItem, targetList.firstChild);
+                        }
+                        cleanup();
+                        refreshRows();
+                        bindRowEvents(newTaskItem.querySelector('.task-row'));
+                        updateCursor();
+                    } else {
+                        if (data.error) alert(data.error);
+                        cleanup();
+                    }
+                })
+                .catch(function() {
+                    cleanup();
+                });
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cleanup();
+            }
+        });
+
+        input.addEventListener('blur', function() {
+            setTimeout(function() {
+                if (subtaskInput === container) cleanup();
+            }, 100);
+        });
+    }
+
+    function handleKey(e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            return;
+        }
+
+        var key = e.key;
+
+        // Option/Alt + Arrow = Move tasks
+        if (e.altKey && (key === 'ArrowDown' || key === 'ArrowUp')) {
+            clearPending();
+            if (rows.length > 0) {
+                moveSelectedTasks(key === 'ArrowUp' ? 'up' : 'down');
+            }
+            e.preventDefault();
+            return;
+        }
+
+        if (key === 'ArrowDown') {
+            clearPending();
+            if (rows.length > 0) {
+                var newCursor = Math.min(cursor + 1, rows.length - 1);
+                updateSelection(newCursor, e.shiftKey);
+                cursor = newCursor;
+                updateCursor();
+            }
+            e.preventDefault();
+            return;
+        }
+
+        if (key === 'ArrowUp') {
+            clearPending();
+            if (rows.length > 0) {
+                var newCursor = Math.max(cursor - 1, 0);
+                updateSelection(newCursor, e.shiftKey);
+                cursor = newCursor;
+                updateCursor();
+            }
+            e.preventDefault();
+            return;
+        }
+
+        if (key === 'Home') {
+            clearPending();
+            clearSelection();
+            cursor = 0;
+            updateCursor();
+            e.preventDefault();
+            return;
+        }
+
+        if (key === 'End') {
+            clearSelection();
+            if (rows.length > 0) {
+                cursor = rows.length - 1;
+                updateCursor();
+            }
+            e.preventDefault();
+            return;
+        }
+
+        if (key === 'Escape') {
+            clearPending();
+            clearSelection();
+            e.preventDefault();
+            return;
+        }
+
+        if (key === 'd') {
+            if (pending === 'd') {
+                var taskId = getTaskId();
+                if (taskId) toggleTask(taskId);
+                clearPending();
+            } else {
+                pending = 'd';
+                pendingTimer = setTimeout(clearPending, 500);
+            }
+            e.preventDefault();
+            return;
+        }
+
+        if (key === 'e') {
+            if (pending === 'e') {
+                startEdit();
+                clearPending();
+            } else {
+                pending = 'e';
+                pendingTimer = setTimeout(clearPending, 500);
+            }
+            e.preventDefault();
+            return;
+        }
+
+        if (key === 's') {
+            if (pending === 's') {
+                startSubtask();
+                clearPending();
+            } else {
+                pending = 's';
+                pendingTimer = setTimeout(clearPending, 500);
+            }
+            e.preventDefault();
+            return;
+        }
+
+        if (key === 'x') {
+            if (pending === 'x') {
+                var taskId = getTaskId();
+                if (taskId) archiveTask(taskId);
+                clearPending();
+            } else {
+                pending = 'x';
+                pendingTimer = setTimeout(clearPending, 500);
+            }
+            e.preventDefault();
+            return;
+        }
+
+        if (key === 'n') {
+            if (pending === 'n') {
+                focusQuickAdd();
+                clearPending();
+            } else {
+                pending = 'n';
+                pendingTimer = setTimeout(clearPending, 500);
+            }
+            e.preventDefault();
+            return;
+        }
+
+        clearPending();
+    }
+
+    function focusQuickAdd() {
+        var row = getCurrentRow();
+        var projectId = row ? row.getAttribute('data-project-id') : null;
+        var input = null;
+
+        if (projectId) {
+            var form = document.querySelector('.quick-add[action="/projects/' + projectId + '/tasks/quick"]');
+            if (form) input = form.querySelector('input[name="title"]');
+        }
+
+        if (!input) {
+            var firstForm = document.querySelector('.quick-add');
+            if (firstForm) input = firstForm.querySelector('input[name="title"]');
+        }
+
+        if (input) input.focus();
+    }
+
+    function getTaskItemWithSubtree(row) {
+        return row.closest('.task-list');
+    }
+
+    function findTargetPosition(selectedRows, direction) {
+        if (selectedRows.length === 0) return null;
+
+        var projectId = selectedRows[0].row.getAttribute('data-project-id');
+        var firstIdx = selectedRows[0].index;
+        var lastIdx = selectedRows[selectedRows.length - 1].index;
+
+        // Get all task items being moved (including their subtrees)
+        var movingTaskItems = new Set();
+        selectedRows.forEach(function(s) {
+            movingTaskItems.add(s.row);
+            // Also add all subtask items
+            var taskItem = s.row.closest('.task-item');
+            taskItem.querySelectorAll('.task-row').forEach(function(sub) {
+                movingTaskItems.add(sub);
+            });
+        });
+
+        // Find target index
+        var targetIdx;
+        if (direction === 'up') {
+            targetIdx = firstIdx - 1;
+        } else {
+            targetIdx = lastIdx + 1;
+        }
+
+        // Skip over rows that are part of our selection's subtree
+        while (targetIdx >= 0 && targetIdx < rows.length) {
+            var targetRow = rows[targetIdx];
+            if (!movingTaskItems.has(targetRow)) {
+                break;
+            }
+            targetIdx = direction === 'up' ? targetIdx - 1 : targetIdx + 1;
+        }
+
+        if (targetIdx < 0 || targetIdx >= rows.length) return null;
+
+        var targetRow = rows[targetIdx];
+        if (targetRow.getAttribute('data-project-id') !== projectId) return null;
+
+        return {
+            targetRow: targetRow,
+            targetIdx: targetIdx,
+            direction: direction
+        };
+    }
+
+    function getListOwnerId(ulElement) {
+        var parentItem = ulElement.closest('.task-item');
+        if (!parentItem) return null;
+        var parentRow = parentItem.querySelector(':scope > .task-row');
+        return parentRow ? parentRow.getAttribute('data-task-id') : null;
+    }
+
+    function moveSelectedTasks(direction) {
+        var selected = getSelectedRows();
+        if (selected.length === 0) return;
+
+        var currentRow = selected[0].row;
+        var currentTaskItem = currentRow.closest('.task-item');
+        var currentLevel = parseInt(currentRow.getAttribute('data-level'), 10);
+
+        var target = findTargetPosition(selected, direction);
+
+        var newParentId = null;
+        var insertReference = null;
+        var insertParent = null;
+        var insertBeforeId = null;
+        var isDenesting = false;
+
+        if (target) {
+            var targetRow = target.targetRow;
+            var targetTaskItem = targetRow.closest('.task-item');
+            var targetTaskId = targetRow.getAttribute('data-task-id');
+
+            if (direction === 'up') {
+                var targetLevel = parseInt(targetRow.getAttribute('data-level'), 10);
+                if (targetLevel > currentLevel) {
+                    // Target is inside a subtree deeper than the moving task.
+                    // Find the ancestor of target at currentLevel and append as its last child.
+                    var ancItem = targetTaskItem;
+                    while (ancItem) {
+                        var ancRow = ancItem.querySelector(':scope > .task-row');
+                        if (ancRow && parseInt(ancRow.getAttribute('data-level'), 10) === currentLevel) break;
+                        ancItem = ancItem.parentElement.closest('.task-item');
+                    }
+                    if (!ancItem) return;
+                    var ancChildList = ancItem.querySelector(':scope > .task-list');
+                    if (!ancChildList) return;
+                    insertParent = ancChildList;
+                    insertReference = null;
+                    insertBeforeId = null;
+                } else {
+                    insertParent = targetTaskItem.parentElement;
+                    insertReference = targetTaskItem;
+                    insertBeforeId = targetTaskId;
+                }
+            } else {
+                var targetChildList = targetTaskItem.querySelector(':scope > .task-list');
+                if (targetChildList && targetChildList.children.length > 0) {
+                    // Has subtasks - become first child
+                    insertParent = targetChildList;
+                    insertReference = targetChildList.firstElementChild;
+                    var firstChildRow = targetChildList.querySelector('.task-row');
+                    insertBeforeId = firstChildRow ? firstChildRow.getAttribute('data-task-id') : null;
+                } else {
+                    // No subtasks - become sibling after
+                    insertParent = targetTaskItem.parentElement;
+                    insertReference = targetTaskItem.nextElementSibling;
+                    var nextSibRow = insertReference ? insertReference.querySelector('.task-row') : null;
+                    insertBeforeId = nextSibRow ? nextSibRow.getAttribute('data-task-id') : null;
+                }
+            }
+
+            newParentId = getListOwnerId(insertParent);
+
+            // Detect de-nesting: move would take task to a shallower level
+            var projectedLevel = 0;
+            if (newParentId) {
+                var projParentRow = document.querySelector('.task-row[data-task-id="' + newParentId + '"]');
+                if (projParentRow) projectedLevel = parseInt(projParentRow.getAttribute('data-level'), 10) + 1;
+            }
+            isDenesting = currentLevel > 0 && projectedLevel < currentLevel;
+        } else {
+            // At list boundary - de-nest if task has a parent
+            isDenesting = currentLevel > 0;
+            if (!isDenesting) return;
+        }
+
+        if (isDenesting) {
+            // De-nest one level at a time
+            var currentParentList = currentTaskItem.parentElement;
+            var parentTaskItem = currentParentList.closest('.task-item');
+            if (!parentTaskItem) return;
+            var grandparentList = parentTaskItem.parentElement;
+            newParentId = getListOwnerId(grandparentList);
+            insertParent = grandparentList;
+
+            if (direction === 'up') {
+                // Place BEFORE parent (de-nest + move above parent in one step)
+                insertReference = parentTaskItem;
+                var parentRowEl = parentTaskItem.querySelector(':scope > .task-row');
+                insertBeforeId = parentRowEl ? parentRowEl.getAttribute('data-task-id') : null;
+            } else {
+                // Place AFTER parent (just de-nest, no extra movement)
+                insertReference = parentTaskItem.nextElementSibling;
+                var afterParentRow = insertReference ? insertReference.querySelector('.task-row') : null;
+                insertBeforeId = afterParentRow ? afterParentRow.getAttribute('data-task-id') : null;
+            }
+        }
+
+        // Compute new level
+        var newLevel = 0;
+        if (newParentId) {
+            var newParentRow = document.querySelector('.task-row[data-task-id="' + newParentId + '"]');
+            if (newParentRow) newLevel = parseInt(newParentRow.getAttribute('data-level'), 10) + 1;
+        }
+
+        // Check if any selected task would exceed max depth
+        var maxSubDepth = 0;
+        selected.forEach(function(s) {
+            var taskItem = s.row.closest('.task-item');
+            taskItem.querySelectorAll('.task-row').forEach(function(r) {
+                var subLevel = parseInt(r.getAttribute('data-level'), 10) - parseInt(s.row.getAttribute('data-level'), 10);
+                if (subLevel > maxSubDepth) maxSubDepth = subLevel;
+            });
+        });
+
+        if ((newLevel + maxSubDepth) > 3) return;
+
+        // For normal down moves, reverse so tasks stack correctly; de-nesting always uses natural order
+        var tasksToMove = (!isDenesting && direction === 'down') ? selected.slice().reverse() : selected;
+
+        var movePromises = tasksToMove.map(function(s) {
+            var taskId = s.row.getAttribute('data-task-id');
+            var formData = new FormData();
+            formData.append('parent_id', newParentId || 'null');
+            formData.append('insert_before_id', insertBeforeId || 'null');
+
+            return fetch('/tasks/' + taskId + '/move', {
+                method: 'POST',
+                headers: { 'Accept': 'application/json' },
+                body: formData
+            })
+            .then(function(r) { return r.json(); });
+        });
+
+        Promise.all(movePromises).then(function(results) {
+            var success = results.every(function(r) { return r.success; });
+            if (success) {
+                var levelDiff = newLevel - parseInt(selected[0].row.getAttribute('data-level'), 10);
+                var domTasksToMove = (!isDenesting && direction === 'down') ? selected.slice().reverse() : selected;
+
+                domTasksToMove.forEach(function(s) {
+                    var taskItem = s.row.closest('.task-item');
+
+                    // Update levels in DOM
+                    taskItem.querySelectorAll('.task-row').forEach(function(r) {
+                        var oldLevel = parseInt(r.getAttribute('data-level'), 10);
+                        var newLvl = oldLevel + levelDiff;
+                        r.setAttribute('data-level', newLvl);
+                        r.className = r.className.replace(/indent-\d/, 'indent-' + newLvl);
+                    });
+
+                    // Move in DOM
+                    if (insertReference) {
+                        insertParent.insertBefore(taskItem, insertReference);
+                    } else {
+                        insertParent.appendChild(taskItem);
+                    }
+
+                    // For normal up moves, advance reference so subsequent tasks stack before previous
+                    if (!isDenesting && direction === 'up') {
+                        insertReference = taskItem;
+                    }
+                });
+
+                refreshRows();
+                var firstMovedId = selected[0].row.getAttribute('data-task-id');
+                for (var i = 0; i < rows.length; i++) {
+                    if (rows[i].getAttribute('data-task-id') === firstMovedId) {
+                        cursor = i;
+                        break;
+                    }
+                }
+                updateCursor();
+            }
+        });
+    }
+
+    document.addEventListener('keydown', handleKey);
+    if (rows.length > 0) updateCursor();
+
+    rows.forEach(function(row) {
+        bindRowEvents(row);
+    });
+
+    document.querySelectorAll('.quick-add').forEach(function(form) {
+        var input = form.querySelector('input[name="title"]');
+
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                input.value = '';
+                input.blur();
+            }
+        });
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var value = input.value.trim();
+            if (!value) return;
+
+            var formData = new FormData();
+            formData.append('title', value);
+
+            fetch(form.action, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json' },
+                body: formData
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success && data.task) {
+                    var projectId = data.task.project_id;
+                    var list = document.querySelector('.task-list[data-project-id="' + projectId + '"]');
+
+                    if (!list) {
+                        list = document.createElement('ul');
+                        list.className = 'task-list';
+                        list.setAttribute('data-project-id', projectId);
+                        form.parentNode.insertBefore(list, form);
+                    }
+
+                    var tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = renderTaskHTML(data.task);
+                    var newTaskItem = tempDiv.firstChild;
+
+                    var firstCompleted = null;
+                    var items = list.querySelectorAll('.task-item');
+                    for (var i = 0; i < items.length; i++) {
+                        var row = items[i].querySelector('.task-row');
+                        if (row && row.classList.contains('completed')) {
+                            firstCompleted = items[i];
+                            break;
+                        }
+                    }
+
+                    if (firstCompleted) {
+                        list.insertBefore(newTaskItem, firstCompleted);
+                    } else {
+                        list.appendChild(newTaskItem);
+                    }
+
+                    refreshRows();
+                    var newRow = newTaskItem.querySelector('.task-row');
+                    bindRowEvents(newRow);
+
+                    // Move cursor to new task
+                    for (var j = 0; j < rows.length; j++) {
+                        if (rows[j] === newRow) {
+                            cursor = j;
+                            break;
+                        }
+                    }
+                    updateCursor();
+                    input.value = '';
+                }
+            });
+        });
+    });
+
+    var priorityOrder = { 'critical': 0, 'major': 1, 'minor': 2 };
+
+    function getTaskPriority(taskItem) {
+        var allRows = taskItem.querySelectorAll('.task-row');
+        var minPriority = 2;
+        for (var i = 0; i < allRows.length; i++) {
+            var p = allRows[i].getAttribute('data-priority');
+            var val = priorityOrder[p];
+            if (val !== undefined && val < minPriority) {
+                minPriority = val;
+            }
+        }
+        return minPriority;
+    }
+
+    function getTaskEffort(taskItem) {
+        var allRows = taskItem.querySelectorAll('.task-row');
+        var effort = 0;
+        for (var i = 0; i < allRows.length; i++) {
+            effort += parseInt(allRows[i].getAttribute('data-effort'), 10) || 0;
+        }
+        return effort;
+    }
+
+    function taskHasTag(taskItem, tag) {
+        var allRows = taskItem.querySelectorAll('.task-row');
+        for (var i = 0; i < allRows.length; i++) {
+            var flags = allRows[i].getAttribute('data-flags') || '';
+            if (flags.toLowerCase().indexOf(tag.toLowerCase()) !== -1) return true;
+        }
+        return false;
+    }
+
+    function isTaskCompleted(taskItem) {
+        var row = taskItem.querySelector('.task-row');
+        return row && row.classList.contains('completed');
+    }
+
+    function sortProjectTasks(projectId, sortType, tagFilter) {
+        var list = document.querySelector('.task-list[data-project-id="' + projectId + '"]');
+        if (!list) return;
+
+        var items = Array.from(list.children).filter(function(el) {
+            return el.classList.contains('task-item');
+        });
+
+        if (items.length === 0) return;
+
+        items.sort(function(a, b) {
+            var aCompleted = isTaskCompleted(a);
+            var bCompleted = isTaskCompleted(b);
+            if (aCompleted !== bCompleted) return aCompleted ? 1 : -1;
+
+            if (sortType === 'priority') {
+                var aPriority = getTaskPriority(a);
+                var bPriority = getTaskPriority(b);
+                return aPriority - bPriority;
+            } else if (sortType === 'effort') {
+                return getTaskEffort(b) - getTaskEffort(a);
+            } else if (sortType === 'tag' && tagFilter) {
+                var aHasTag = taskHasTag(a, tagFilter);
+                var bHasTag = taskHasTag(b, tagFilter);
+                if (aHasTag !== bHasTag) return aHasTag ? -1 : 1;
+            }
+            return 0;
+        });
+
+        items.forEach(function(item) {
+            list.appendChild(item);
+        });
+
+        refreshRows();
+        cursor = 0;
+        updateCursor();
+    }
+
+    document.querySelectorAll('.sort-link').forEach(function(link) {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            var projectId = this.getAttribute('data-project-id');
+            var sortType = this.getAttribute('data-sort');
+
+            if (sortType === 'tag') {
+                var tag = prompt('Enter tag to sort by:');
+                if (tag) {
+                    sortProjectTasks(projectId, sortType, tag.trim());
+                }
+            } else {
+                sortProjectTasks(projectId, sortType);
+            }
+        });
+    });
+
+})();
+</script>
+{% endblock %}
