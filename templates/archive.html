@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block content %}
-<h1>Archive</h1>
+{% block page_heading %}<h1>Archive</h1>{% endblock %}
 
+{% block content %}
 {% if projects %}
   {% for project in projects %}
     {% set tasks = archived_trees.get(project.id, []) %}
@@ -14,18 +14,20 @@
       <ul class="task-list">
         {% for task in tasks recursive %}
           <li class="task-item">
-            <div class="task-content">
-              <span class="cursor-indicator"></span>
-              <span class="priority-badge priority-{{ task.priority }}">{{ task.priority }}</span>
-              {% for flag in task.flags_list %}<span class="flag flag-color-{{ flag.color }}">{{ flag.name }}</span>{% endfor %}
-              {{ task.title }}
-              {% if task.effort_hours %}<span class="meta">{{ task.effort_hours }}h</span>{% endif %}
-              <span class="meta" data-meta="{{ task.created_at[:10] }}"></span>
-              {% if task.completed_at %}<span class="meta done-date" data-done-date="{{ task.completed_at[:10] }}"></span>{% endif %}
+            <div class="task-row indent-{{ task.level }}{% if task.completed_at %} completed{% endif %}">
+              <span class="task-content">
+                <span class="cursor-indicator"></span>
+                <span class="priority-badge priority-{{ task.priority }}">{{ task.priority[:1] }}</span>
+                {% for flag in task.flags_list %}<span class="flag flag-color-{{ flag.color }}">{{ flag.name }}</span>{% endfor %}
+                {{ task.title }}
+                {% if task.effort_hours %}<span class="meta">{{ task.effort_hours }}h</span>{% endif %}
+                <span class="meta" data-meta="{{ task.created_at[:10] }}"></span>
+                {% if task.completed_at %}<span class="meta done-date" data-done-date="{{ task.completed_at[:10] }}"></span>{% endif %}
+              </span>
+              <span class="actions-right">
+                <a href="/tasks/{{ task.id }}/restore">[restore]</a>
+              </span>
             </div>
-            <span class="actions-right">
-              <a href="/tasks/{{ task.id }}/restore">restore</a>
-            </span>
           </li>
           {% if task.children %}
             <ul class="task-list">
@@ -40,9 +42,41 @@
   <p class="meta">No projects yet.</p>
 {% endif %}
 
+{% if archived_projects %}
+  {% for project in archived_projects %}
+    <div class="project-header">
+      ## {{ project.name }}
+      <span class="actions-right"><a href="/projects/{{ project.id }}/restore">[restore]</a></span>
+    </div>
+    {% set tasks = archived_trees.get(project.id, []) %}
+    {% if tasks %}
+    <ul class="task-list">
+      {% for task in tasks recursive %}
+        <li class="task-item">
+          <div class="task-row indent-{{ task.level }}{% if task.completed_at %} completed{% endif %}">
+            <span class="task-content">
+              <span class="cursor-indicator"></span>
+              <span class="priority-badge priority-{{ task.priority }}">{{ task.priority[:1] }}</span>
+              {% for flag in task.flags_list %}<span class="flag flag-color-{{ flag.color }}">{{ flag.name }}</span>{% endfor %}
+              {{ task.title }}
+              {% if task.effort_hours %}<span class="meta">{{ task.effort_hours }}h</span>{% endif %}
+              <span class="meta" data-meta="{{ task.created_at[:10] }}"></span>
+              {% if task.completed_at %}<span class="meta done-date" data-done-date="{{ task.completed_at[:10] }}"></span>{% endif %}
+            </span>
+          </div>
+        </li>
+        {% if task.children %}
+          <ul class="task-list">{{ loop(task.children) }}</ul>
+        {% endif %}
+      {% endfor %}
+    </ul>
+    {% endif %}
+  {% endfor %}
+{% endif %}
+
 {% if not has_archived %}
   <p class="meta">No archived tasks.</p>
 {% endif %}
 
-<a href="/">Back to tasks</a>
+<a href="/" class="back-link">[Back to tasks]</a>
 {% endblock %}

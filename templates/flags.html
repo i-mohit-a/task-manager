@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block content %}
-<h1># Flags</h1>
+{% block page_heading %}<h1># Flags</h1>{% endblock %}
 
+{% block content %}
 {% if flags %}
 <ul class="task-list">
     {% for flag in flags %}
@@ -13,5 +13,5 @@
 <p class="meta">No flags created yet. Add flags when creating or editing tasks.</p>
 {% endif %}
 
-<p><a href="/">Back to tasks</a></p>
+<a href="/" class="back-link">[Back to tasks]</a>
 {% endblock %}

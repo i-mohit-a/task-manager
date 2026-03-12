@@ -28,8 +28,17 @@
 
         h1 {
             font-size: 18px;
+            margin: 0;
+            padding: 0;
+        }
+
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
             border-bottom: 1px solid #ccc;
             padding-bottom: 8px;
+            margin-bottom: 16px;
         }
 
         .project-header {
@@ -80,14 +89,26 @@
 
         .task-row {
             padding: 4px 0;
-            border-bottom: 1px dotted #ddd;
+            border-bottom: none;
             display: flex;
             justify-content: space-between;
-            align-items: baseline;
+            align-items: flex-start;
+        }
+
+        body:not(.show-lines) .task-row {
+            padding-top: 2px;
+            padding-bottom: 2px;
+        }
+
+        body.show-lines .task-row {
+            border-bottom: 1px dotted #ddd;
         }
 
         .task-content {
             flex: 1;
+            overflow-wrap: break-word;
+            word-break: break-word;
+            min-width: 0;
         }
 
         .actions-right {
@@ -171,11 +192,16 @@
         }
 
         .actions {
-            font-size: 12px;
+            font-size: 10px;
         }
 
         .actions a {
-            margin-right: 8px;
+            color: #7ab3d4;
+        }
+
+        .actions a:hover {
+            color: #3a7fa8;
+            text-decoration: none;
         }
 
         form {
@@ -229,25 +255,25 @@
         }
 
         .quick-add {
-            margin: 4px 0;
+            margin: 0;
             padding: 0;
-            background: transparent;
+            background: rgba(255,255,255,0.7);
             border: none;
         }
 
-        .quick-add input {
+        .quick-add input[type="text"] {
             font-family: inherit;
             font-size: 14px;
-            padding: 4px 8px;
-            border: 1px solid #ccc;
+            padding: 4px 0;
+            border: none;
             background: transparent;
-            width: 480px;
+            width: 100%;
+            box-sizing: border-box;
+            outline: none;
         }
 
-        .quick-add input:focus {
-            border-color: #999;
-            outline: none;
-            background: #fff;
+        .quick-add-item {
+            list-style: none;
         }
 
         .inline-edit {
@@ -272,12 +298,27 @@
             border: 1px solid #cccc00;
         }
 
-        .nav {
-            margin-bottom: 16px;
+        .nav a {
+            margin-left: 16px;
+            font-size: 13px;
+            color: #888;
         }
 
-        .nav a {
-            margin-right: 16px;
+        .nav a:hover {
+            color: #333;
+            text-decoration: none;
+        }
+
+        .back-link {
+            display: block;
+            margin-top: 24px;
+            font-size: 10px;
+            color: #7ab3d4;
+        }
+
+        .back-link:hover {
+            color: #3a7fa8;
+            text-decoration: none;
         }
 
         .cursor-indicator {
@@ -330,16 +371,157 @@
             border-radius: 2px;
             font-family: inherit;
         }
+
+        .settings-btn {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            font-size: 20px;
+            cursor: pointer;
+            color: #888;
+            background: none;
+            border: none;
+            padding: 2px 6px;
+            font-family: inherit;
+            z-index: 100;
+        }
+
+        .settings-btn:hover {
+            color: #333;
+        }
+
+        .settings-dropdown {
+            display: none;
+            position: fixed;
+            top: 40px;
+            right: 16px;
+            background: #fff;
+            border: 1px solid #ccc;
+            padding: 10px 14px;
+            font-size: 12px;
+            z-index: 100;
+            min-width: 160px;
+        }
+
+        .settings-dropdown.open {
+            display: block;
+        }
+
+        .settings-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .settings-row label {
+            color: #555;
+        }
+
+        .settings-toggle {
+            font-family: inherit;
+            font-size: 11px;
+            cursor: pointer;
+            background: #e8e8e8;
+            border: 1px solid #ccc;
+            padding: 1px 7px;
+            color: #333;
+        }
+
+        .settings-toggle.active {
+            background: #333;
+            color: #fff;
+            border-color: #333;
+        }
+
+        body.compact {
+            font-size: 11px;
+        }
+
+        body.compact h1 {
+            font-size: 14px;
+        }
+
+        body.compact .page-header {
+            padding-bottom: 4px;
+            margin-bottom: 8px;
+        }
+
+        body.compact .project-header {
+            font-size: 12px;
+            margin-top: 5px;
+        }
+
+        body.compact .quick-add input[type="text"] {
+            font-size: 11px;
+        }
     </style>
 </head>
 <body>
-    <div class="nav">
-        <a href="/">Home</a>
-        <a href="/projects">Projects</a>
-        <a href="/flags">Flags</a>
-        <a href="/archive">Archive</a>
+    <button class="settings-btn" id="settings-btn" title="Settings">⚙</button>
+    <div class="settings-dropdown" id="settings-dropdown">
+        <div class="settings-row">
+            <label>Font size</label>
+            <button class="settings-toggle" id="compact-toggle">compact</button>
+        </div>
+        <div class="settings-row" style="margin-top: 8px;">
+            <label>Task lines</label>
+            <button class="settings-toggle" id="lines-toggle">show</button>
+        </div>
+    </div>
+    <div class="page-header">
+        {% block page_heading %}{% endblock %}
+        <nav class="nav">
+            <a href="/">Home</a>
+            <a href="/projects">Projects</a>
+            <a href="/flags">Flags</a>
+            <a href="/archive">Archive</a>
+        </nav>
     </div>
     {% block content %}{% endblock %}
     {% block scripts %}{% endblock %}
+    <script>
+    (function() {
+        var btn = document.getElementById('settings-btn');
+        var dropdown = document.getElementById('settings-dropdown');
+        var compactToggle = document.getElementById('compact-toggle');
+        var linesToggle = document.getElementById('lines-toggle');
+
+        if (localStorage.getItem('compact') === '1') {
+            document.body.classList.add('compact');
+            compactToggle.classList.add('active');
+        }
+
+        if (localStorage.getItem('showLines') === '1') {
+            document.body.classList.add('show-lines');
+            linesToggle.classList.add('active');
+        }
+
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            dropdown.classList.toggle('open');
+        });
+
+        document.addEventListener('click', function() {
+            dropdown.classList.remove('open');
+        });
+
+        dropdown.addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
+
+        compactToggle.addEventListener('click', function() {
+            var isCompact = document.body.classList.toggle('compact');
+            compactToggle.classList.toggle('active', isCompact);
+            localStorage.setItem('compact', isCompact ? '1' : '0');
+        });
+
+        linesToggle.addEventListener('click', function() {
+            var showLines = document.body.classList.toggle('show-lines');
+            linesToggle.classList.toggle('active', showLines);
+            localStorage.setItem('showLines', showLines ? '1' : '0');
+        });
+    })();
+    </script>
 </body>
 </html>

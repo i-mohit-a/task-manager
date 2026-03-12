@@ -86,7 +86,7 @@ async def create_project(request):
 
 async def delete_project(request):
     project_id = int(request.path_params["project_id"])
-    db.delete_project(project_id)
+    db.archive_project(project_id)
     return RedirectResponse(url="/projects", status_code=302)
 
 
@@ -224,6 +224,7 @@ async def flags_list(request):
 
 async def archive_page(request):
     projects = db.get_all_projects()
+    archived_projects = db.get_archived_projects()
     archived_trees = {}
     has_archived = False
     for project in projects:
@@ -231,11 +232,26 @@ async def archive_page(request):
         if tasks:
             has_archived = True
             archived_trees[project["id"]] = db.build_task_tree(tasks)
+    for project in archived_projects:
+        tasks = db.get_tasks_by_project(project["id"], include_archived=True)
+        has_archived = True
+        archived_trees[project["id"]] = db.build_task_tree(tasks)
     return templates.TemplateResponse(
         request,
         "archive.html",
-        {"projects": projects, "archived_trees": archived_trees, "has_archived": has_archived}
+        {
+            "projects": projects,
+            "archived_projects": archived_projects,
+            "archived_trees": archived_trees,
+            "has_archived": has_archived
+        }
     )
+
+
+async def restore_project(request):
+    project_id = int(request.path_params["project_id"])
+    db.restore_project(project_id)
+    return RedirectResponse(url="/archive", status_code=302)
 
 
 async def restore_task(request):
@@ -272,6 +288,7 @@ routes = [
     Route("/projects", projects_page),
     Route("/projects/new", create_project, methods=["POST"]),
     Route("/projects/{project_id:int}/delete", delete_project),
+    Route("/projects/{project_id:int}/restore", restore_project),
     Route("/projects/{project_id:int}/tasks/quick", quick_add_task, methods=["POST"]),
     Route("/tasks/{task_id:int}/inline-edit", inline_edit_task, methods=["POST"]),
     Route("/tasks/{task_id:int}/inline-subtask", inline_subtask, methods=["POST"]),

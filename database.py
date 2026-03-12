@@ -72,6 +72,11 @@ def init_db():
     """)
 
     # Migrations: add columns if not exists (preserves existing data)
+    cursor.execute("PRAGMA table_info(projects)")
+    proj_columns = [row[1] for row in cursor.fetchall()]
+    if "archived" not in proj_columns:
+        cursor.execute("ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
+
     cursor.execute("PRAGMA table_info(tasks)")
     columns = [row[1] for row in cursor.fetchall()]
     if "archived" not in columns:
@@ -115,10 +120,37 @@ def create_project(name):
 def get_all_projects():
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM projects ORDER BY created_at DESC")
+    cursor.execute("SELECT * FROM projects WHERE archived = 0 ORDER BY created_at DESC")
     projects = cursor.fetchall()
     conn.close()
     return projects
+
+
+def get_archived_projects():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM projects WHERE archived = 1 ORDER BY created_at DESC")
+    projects = cursor.fetchall()
+    conn.close()
+    return projects
+
+
+def archive_project(project_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE projects SET archived = 1 WHERE id = ?", (project_id,))
+    cursor.execute("UPDATE tasks SET archived = 1 WHERE project_id = ?", (project_id,))
+    conn.commit()
+    conn.close()
+
+
+def restore_project(project_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE projects SET archived = 0 WHERE id = ?", (project_id,))
+    cursor.execute("UPDATE tasks SET archived = 0 WHERE project_id = ?", (project_id,))
+    conn.commit()
+    conn.close()
 
 
 def delete_project(project_id):

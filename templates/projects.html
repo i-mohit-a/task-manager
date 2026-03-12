@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block content %}
-<h1># Projects</h1>
+{% block page_heading %}<h1># Projects</h1>{% endblock %}
 
+{% block content %}
 {% if projects %}
 <ul class="task-list">
     {% for project in projects %}
@@ -10,7 +10,7 @@
         - <a href="/">{{ project.name }}</a>
         <span class="meta">{{ project.created_at[:10] }}</span>
         <span class="actions">
-            <a href="/projects/{{ project.id }}/delete" onclick="return confirm('Delete project and all tasks?')">x</a>
+            <a href="/projects/{{ project.id }}/delete" onclick="return confirm('Delete project and all tasks?')">[x]</a>
         </span>
     </li>
     {% endfor %}
@@ -20,6 +20,8 @@
 {% endif %}
 
 <form class="quick-add" action="/projects/new" method="post" style="margin-top: 16px;">
-    <input type="text" name="name" placeholder="## new project (press Enter)" autocomplete="off" required>
+    <input type="text" name="name" placeholder="- new project (press Enter)" autocomplete="off" required>
 </form>
+
+<a href="/" class="back-link">[Back to tasks]</a>
 {% endblock %}
