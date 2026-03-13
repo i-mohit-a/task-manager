@@ -6,11 +6,9 @@ A keyboard-driven local task manager built with Python (Starlette) and SQLite. R
 
 ## Requirements
 
-- **macOS** (uses launchd for production background service)
-- **Python 3.8+**
-- **Caddy** (reverse proxy — handles local domain routing)
-
-Install Caddy via Homebrew:
+- macOS (uses launchd for production background service)
+- Python 3.8+
+- Caddy (reverse proxy for local domain routing)
 
 ```bash
 brew install caddy
@@ -22,16 +20,17 @@ brew install caddy
 
 ```
 task-manager/
-├── app.py                # Starlette web app, routes
-├── database.py           # SQLite database layer
+├── app.py                # Starlette web app, routes, AJAX handlers
+├── database.py           # SQLite layer, migrations, task tree building
+├── task_parser.py        # Parses inline task syntax
 ├── requirements.txt      # Python dependencies
-├── deploy.sh             # Single script for dev and production
+├── deploy.sh             # Dev and production deployment script
 └── templates/
-    ├── base.html         # Base layout + CSS
-    ├── index.html        # Main task view + keyboard JS
-    ├── archive.html      # Archived tasks
-    ├── flags.html        # Flag listing
-    └── projects.html     # Project management
+    ├── base.html         # Layout, CSS, settings UI
+    ├── index.html        # Main task view and keyboard navigation JS
+    ├── projects.html     # Project management
+    ├── flags.html        # Flag listing and deletion
+    └── archive.html      # Archived tasks and projects
 ```
 
 ---
@@ -47,46 +46,42 @@ pip install -r requirements.txt
 ./deploy.sh --dev --start
 ```
 
-On first run, `deploy.sh` will add entries to `/etc/hosts` and will prompt for your **sudo password** once to do so.
+On first run, `deploy.sh` adds entries to `/etc/hosts` and prompts for your sudo password once.
 
-Open: **http://dev.taskmanager.local**
-
-To stop:
+Open: http://dev.taskmanager.local
 
 ```bash
-./deploy.sh --dev --stop
+./deploy.sh --dev --stop       # stop
+./deploy.sh --dev --restart    # restart
 ```
 
 ---
 
-## Production Deploy (macOS background service)
+## Production Deploy
 
 ```bash
 ./deploy.sh --prd
 ```
 
 This will:
+
 - Add `/etc/hosts` entries (prompts for sudo once if not already set)
 - Copy all app files to `~/.local/taskmanager/`
 - Create a virtual environment and install dependencies (first run only)
-- Generate and install a launchd LaunchAgent for the app (auto-starts at login)
-- Generate and install a launchd LaunchAgent for Caddy (auto-starts at login)
+- Install a launchd LaunchAgent for the app (auto-starts at login)
+- Install a launchd LaunchAgent for Caddy (auto-starts at login)
+- Back up the previous version before updating
 - Start both services
 
-Open: **http://taskmanager.local**
-
-To manage the production service manually:
+Open: http://taskmanager.local
 
 ```bash
-# Stop
-launchctl unload ~/Library/LaunchAgents/com.local.taskmanager.plist
-launchctl unload ~/Library/LaunchAgents/com.local.taskmanager-caddy.plist
+./deploy.sh --prd --restart    # restart without redeploying
+```
 
-# Start
-launchctl load ~/Library/LaunchAgents/com.local.taskmanager.plist
-launchctl load ~/Library/LaunchAgents/com.local.taskmanager-caddy.plist
+Logs:
 
-# View logs
+```bash
 cat /tmp/taskmanager.log
 cat /tmp/taskmanager.err
 cat /tmp/taskmanager-caddy.log
@@ -94,34 +89,34 @@ cat /tmp/taskmanager-caddy.log
 
 ---
 
-## URLs
-
-| Mode | App URL | Port |
-|------|---------|------|
-| Dev | http://dev.taskmanager.local | 8001 (internal) |
-| Production | http://taskmanager.local | 8000 (internal) |
+## URLs and Ports
 
 Both modes can run simultaneously. Caddy routes each domain to the correct port.
+
+| Mode       | URL                          | Internal port |
+|------------|------------------------------|---------------|
+| Dev        | http://dev.taskmanager.local | 8001          |
+| Production | http://taskmanager.local     | 8000          |
 
 ---
 
 ## Pages
 
-| Page | Path |
-|------|------|
-| Tasks (home) | `/` |
+| Page    | Path       |
+|---------|------------|
+| Tasks   | `/`        |
 | Projects | `/projects` |
-| Flags | `/flags` |
+| Flags   | `/flags`   |
 | Archive | `/archive` |
 
 ---
 
 ## Database
 
-| Mode | Location |
-|------|----------|
-| Dev (`TASKMANAGER_DEV=1`) | `tasks.db` in project directory |
-| Production | `~/Library/Application Support/TaskManager/tasks.db` |
+| Mode        | Location                                               |
+|-------------|--------------------------------------------------------|
+| Dev         | `tasks.db` in project directory                        |
+| Production  | `~/Library/Application Support/TaskManager/tasks.db`  |
 
 Schema is auto-created on first run. Migrations are applied automatically on startup.
 
@@ -131,11 +126,13 @@ Schema is auto-created on first run. Migrations are applied automatically on sta
 
 ### Projects
 
-Tasks are organised into projects. Each project has its own task list and quick-add bar on the home page.
+Tasks are organised into projects. Each project has its own task list on the home page with a quick-add input.
 
-- Create a project from the Projects page by typing a name and pressing Enter.
-- Delete a project from the Projects page. Deleting a project permanently removes all its tasks and subtasks.
-- Projects are listed in reverse creation order on the home page.
+- Create projects from the Projects page or using the quick-add at the bottom of the project list
+- Archive a project from the Projects page — this also archives all its tasks
+- Archived projects and their tasks can be restored from the Archive page
+- Projects can be reordered; order persists across reloads
+- Both dev and production databases are kept separate
 
 ---
 
@@ -145,158 +142,172 @@ Each task belongs to a project and can have:
 
 - a title
 - a priority: `critical`, `major`, or `minor` (default: `minor`)
-- an effort estimate in hours (supports decimals, e.g. `~1.5h`)
-- a start date
-- a due date
+- an effort estimate in hours (e.g. `~4h` or `~1.5h`)
+- a start date and a due date
 - one or more flags (tags)
 - subtasks (up to 3 levels deep)
 
-Tasks are displayed with a one-letter priority badge (`c`, `M`, or `m`), followed by any flags, the title, and then effort and dates as muted metadata. The creation date is always shown. When completed, the completion date is shown instead.
-
-Incomplete tasks appear before completed tasks within each list. Within each group the order is the manually set position (persisted across reloads).
+Tasks display a one-letter priority badge, any flag badges, the title, effort, dates, and the creation date. Completed tasks show the completion date instead. Incomplete tasks always appear above completed tasks within their list.
 
 ---
 
 ### Task Input Syntax
 
-All task fields can be set inline when adding or editing a task using a single text input. The syntax is:
+All task fields can be set in a single text input when adding or editing a task:
 
 ```
 task title [flag1] [flag2] !priority ~Nh >YYYY-MM-DD <YYYY-MM-DD
 ```
 
-| Part | Syntax | Example | Notes |
-|------|--------|---------|-------|
-| Title | plain text | `Fix signup bug` | everything not matched by other tokens |
-| Flag | `[name]` | `[auth]` `[backend]` | any word in brackets; multiple allowed |
-| Priority | `!critical` `!major` `!minor` | `!critical` | prefix with `!`; omit for default `minor` |
-| Effort | `~Nh` | `~4h` `~1.5h` | hours prefixed with `~`; decimals supported |
-| Start date | `>YYYY-MM-DD` | `>2026-03-15` | shown as `>date` in the task row |
-| Due date | `<YYYY-MM-DD` | `<2026-03-31` | shown as `<date` in the task row |
+| Part       | Syntax      | Example          | Notes                              |
+|------------|-------------|------------------|------------------------------------|
+| Title      | plain text  | `Fix signup bug` | anything not matched by other tokens |
+| Flag       | `[name]`    | `[auth]`         | any word in brackets; multiple allowed |
+| Priority   | `!level`    | `!critical`      | critical, major, or minor; default is minor |
+| Effort     | `~Nh`       | `~4h` `~1.5h`    | hours prefixed with `~`            |
+| Start date | `>date`     | `>2026-03-15`    | YYYY-MM-DD format                  |
+| Due date   | `<date`     | `<2026-03-31`    | YYYY-MM-DD format                  |
 
-Example: `Fix signup bug [auth] [backend] !critical ~2h >2026-03-10 <2026-03-15`
+Token order does not matter. Example:
 
-The order of tokens does not matter. Any unrecognised text becomes the title.
+```
+Fix signup bug [auth] [backend] !critical ~2h >2026-03-10 <2026-03-15
+```
 
 ---
 
 ### Subtasks
 
-A task can have subtasks up to 3 levels deep (level 0 is root, level 3 is maximum depth).
+Tasks can have subtasks up to 3 levels deep (level 0 is root).
 
-- Add a subtask by pressing `ss` on any task that is not at level 3.
-- Subtasks are indented visually under their parent.
-- Completing a parent task also completes all its incomplete subtasks, stamped with the same timestamp so they can be undone together.
-- Undoing a parent task reverts only the subtasks that were completed at the same timestamp as the parent.
-- Archiving or restoring a task also archives or restores all its subtasks.
+- Press `ss` on any non-maximum-depth task to add a subtask inline
+- Subtasks are indented visually under their parent
+- Completing a parent also completes all its incomplete subtasks, stamped with the same timestamp
+- Undoing a parent reverts only subtasks completed at that same timestamp
+- Archiving or restoring a task also archives or restores all its subtasks
 
 ---
 
 ### Completing Tasks
 
-Toggle a task done or undone:
+Toggle done or undone via `dd` or clicking `[done]` / `[undo]`.
 
-- Click `[done]` / `[undo]` on the task row, or
-- Press `dd` with the cursor on the task.
-
-When marked done, the task moves to the bottom of the list and the completion date is shown. Pressing `dd` again (or clicking `[undo]`) restores it to incomplete.
+When marked done, the task moves to the bottom of the list and the completion date is shown. Undoing restores it above completed tasks.
 
 ---
 
 ### Editing Tasks
 
-Press `ee` or click `[edit]` to edit a task inline. The current task values are pre-filled in the same input syntax as task creation. Edit the text and press Enter to save, or Escape to cancel.
+Press `ee` or click `[edit]` to edit a task inline. All current values are pre-filled in the same input syntax. Press Enter to save, Escape to cancel.
 
-Editing supports all fields: title, flags, priority, effort, start date, and due date. Flags not present in the new input are removed; new flags are added.
+Flags not present in the edited input are removed; new flags are added automatically.
 
 ---
 
 ### Flags
 
-Flags are free-form tags applied to tasks. Each flag gets a consistent colour derived from its name, shown as a small badge on the task row. The same flag name always gets the same colour.
+Flags are free-form tags applied to tasks. Each flag name gets a consistent colour (hash-based, 8 colour options) shown as a small badge on the task row.
 
-- Add flags using `[flagname]` in the task input when creating or editing.
-- Multiple flags are allowed per task.
-- Remove a flag by editing the task and omitting it from the input.
-- All flags currently in use are listed on the Flags page (`/flags`).
-- Flags are shared across all projects.
+- Add flags using `[flagname]` in the task input
+- Multiple flags per task are allowed
+- Remove a flag by editing the task and omitting it
+- All flags are listed on the Flags page (`/flags`)
+- Flags can be deleted from the Flags page — deletion removes the flag from all tasks
+- Flags are shared across all projects
 
 ---
 
 ### Archiving
 
-Archive a task to remove it from the main view without deleting it.
+Press `xx` or click `[x]` to archive a task. Archived tasks are removed from the main view but not deleted.
 
-- Press `xx` or click `[x]` on the task row.
-- Archiving a task also archives all its subtasks.
-- Archived tasks are visible at `/archive`, grouped by project.
-- Restore a task from the archive page by clicking `restore`. Restoring also restores all subtasks.
+- Archiving a task also archives all its subtasks
+- Archived tasks appear at `/archive`, grouped by project
+- Click `[restore]` on the archive page to restore a task and all its subtasks
 
 ---
 
 ### Sorting
 
-Each project header has three sort controls: `[sort:priority]`, `[sort:effort]`, and `[sort:tag]`.
+Each project header has three sort controls:
 
-- `sort:priority` — sorts tasks by their highest priority (critical first, then major, then minor), with completed tasks always last.
-- `sort:effort` — sorts tasks by total effort (highest first), with completed tasks always last.
-- `sort:tag` — prompts for a flag name and sorts tasks that have that flag to the top.
+- `[sort:priority]` — sorts by priority (critical first), completed tasks last
+- `[sort:effort]` — sorts by total effort hours (highest first), completed tasks last
+- `[sort:tag]` — prompts for a flag name, floats tasks with that flag to the top
 
-Sorting is visual only and does not persist on reload. It only sorts root-level tasks within a project.
+Sorting is client-side only and does not persist on reload.
 
 ---
 
 ### Moving Tasks
 
-Press `alt + up` or `alt + down` to reorder tasks. Moved positions are persisted to the database and survive page reloads.
+Press `alt+up` / `alt+down` to reorder tasks. Positions persist across reloads.
 
-Moving within the same level swaps the task with its sibling above or below.
+Moving within the same level swaps with the sibling above or below.
 
-Moving up into a subtree:
-- If the task immediately above belongs to a subtree (i.e. is a subtask), the moving task enters that subtree as the last child, one level at a time per keypress. Pressing alt-up repeatedly moves it further up through the nested levels.
+Moving across levels:
 
-Moving down out of a parent (de-nesting):
-- If the task is a subtask and there is nothing below it within its current parent, pressing alt-down moves it out one level, placing it immediately after the parent. Each press de-nests one level. After reaching root level, alt-down moves it below the next sibling as normal.
+- Moving up into a subtree makes the task the last child of that subtree, one level per keypress
+- Moving down at the bottom of a subtree de-nests the task one level, placing it after its parent
+- Moving up at the top of a subtree de-nests the task one level, placing it before its parent
 
-Moving up out of a parent (de-nesting):
-- If the task is a subtask and there is nothing above it within its current parent, pressing alt-up moves it out one level and places it immediately before the parent. Each press de-nests one level and moves it above the former parent.
-
-Tasks cannot be moved across projects. Tasks with subtasks carry their subtrees when moved.
+Tasks cannot be moved across projects. Tasks carry their subtrees when moved.
 
 ---
 
-### Multi-select
+### Multi-Select
 
-Hold `shift + up` or `shift + down` to extend the selection to multiple tasks. Selected rows are highlighted. Actions such as alt-move apply to the whole selection.
+Hold `shift+up` / `shift+down` to extend the selection across multiple tasks. Selected rows are highlighted. `alt+up` / `alt+down` moves all selected tasks together.
 
-Press `Escape` to clear the selection.
+Press Escape to clear the selection.
 
 ---
 
 ### Quick Add
 
-Each project on the home page has a quick-add input below its task list. Click it or press `nn` (when cursor is on a task in that project) to focus it.
+Each project on the home page has a quick-add input positioned just above any completed tasks. Press `nn` to focus it, or press the down arrow when on the last incomplete task.
 
-Type a task using the inline syntax and press Enter to add it. The new task appears at the top of the incomplete tasks. Press Escape to clear the input and blur it.
+Type using the inline syntax and press Enter to add. The input auto-grows for long text. Press Escape to clear and dismiss.
+
+---
+
+### Settings
+
+A settings panel in the top-right corner (gear icon) provides two toggles, both persisted in localStorage:
+
+- Font size — compact mode reduces the UI to a smaller font
+- Task lines — show a dotted separator line under each task row
+
+Hovering over a task row always shows the separator line regardless of the setting.
 
 ---
 
 ### Keyboard Shortcuts
 
-All shortcuts are available when no input is focused. Double-key shortcuts (`dd`, `ee`, `ss`, `xx`, `nn`) require both keypresses within 500ms.
+All shortcuts work when no input is focused. Double-key shortcuts (`dd`, `ee`, `ss`, `xx`, `nn`) require both keypresses within 500ms.
 
-| Key | Action |
-|-----|--------|
-| `j` or `down arrow` | Move cursor down |
-| `k` or `up arrow` | Move cursor up |
-| `Home` | Jump to first task |
-| `End` | Jump to last task |
-| `Shift + up/down` | Extend selection |
-| `Alt + up` | Move task up / de-nest up |
-| `Alt + down` | Move task down / de-nest down |
-| `dd` | Toggle task done / undone |
-| `ee` | Edit task inline |
-| `ss` | Add subtask |
-| `xx` | Archive task |
-| `nn` | Focus quick-add input for current project |
-| `Escape` | Clear selection / cancel edit or subtask input |
+Home page:
+
+| Key              | Action                                   |
+|------------------|------------------------------------------|
+| up / down        | Move cursor                              |
+| Home             | Jump to first task                       |
+| End              | Jump to last task                        |
+| shift + up/down  | Extend selection                         |
+| alt + up/down    | Move task up or down (persisted)         |
+| dd               | Toggle task done / undone                |
+| ee               | Edit task inline                         |
+| ss               | Add subtask                              |
+| xx               | Archive task                             |
+| nn               | Focus quick-add for current project      |
+| Escape           | Clear selection, cancel edit or subtask  |
+
+Projects page:
+
+| Key              | Action                                   |
+|------------------|------------------------------------------|
+| up / down        | Move cursor                              |
+| shift + up/down  | Extend selection                         |
+| alt + up/down    | Reorder selected projects (persisted)    |
+| nn               | Focus new project input                  |
+| xx               | Archive project at cursor                |
