@@ -1,3 +1,4 @@
+import logging
 import sys
 from starlette.applications import Starlette
 from starlette.responses import RedirectResponse, JSONResponse
@@ -6,6 +7,9 @@ from starlette.templating import Jinja2Templates
 from pathlib import Path
 
 import database as db
+from task_parser import parse_task_input
+
+logger = logging.getLogger(__name__)
 
 
 def is_ajax(request):
@@ -36,6 +40,31 @@ def task_to_dict(task):
     }
 
 
+def build_task_tree(tasks):
+    task_dict = {}
+    for task in tasks:
+        task_data = dict(task)
+        task_data["children"] = []
+        task_dict[task_data["id"]] = task_data
+
+    roots = []
+    for task_data in task_dict.values():
+        if task_data["parent_id"] is None:
+            roots.append(task_data)
+        else:
+            parent = task_dict.get(task_data["parent_id"])
+            if parent:
+                parent["children"].append(task_data)
+
+    def sort_by_completion(items):
+        for item in items:
+            if item["children"]:
+                item["children"] = sort_by_completion(item["children"])
+        return sorted(items, key=lambda x: (0 if x["completed_at"] is None else 1))
+
+    return sort_by_completion(roots)
+
+
 def get_templates_dir():
     """Get templates directory, works both in dev and bundled app."""
     if getattr(sys, 'frozen', False):
@@ -59,7 +88,7 @@ async def index(request):
     task_trees = {}
     for project in projects:
         tasks = db.get_tasks_by_project(project["id"])
-        task_trees[project["id"]] = db.build_task_tree(tasks)
+        task_trees[project["id"]] = build_task_tree(tasks)
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -104,7 +133,7 @@ async def quick_add_task(request):
     raw_input = form.get("title", "").strip()
     task_id = None
     if raw_input:
-        parsed = db.parse_task_input(raw_input)
+        parsed = parse_task_input(raw_input)
         if parsed["title"]:
             task_id = db.create_task(
                 project_id,
@@ -130,13 +159,13 @@ async def inline_edit_task(request):
     task = db.get_task(task_id)
     if not task:
         if is_ajax(request):
-            return JSONResponse({"success": False, "error": "Task not found"})
+            return JSONResponse({"success": False, "error": "Task not found"}, status_code=404)
         return RedirectResponse(url="/", status_code=302)
 
     form = await request.form()
     raw_input = form.get("content", "").strip()
     if raw_input:
-        parsed = db.parse_task_input(raw_input)
+        parsed = parse_task_input(raw_input)
         if parsed["title"]:
             db.update_task(
                 task_id,
@@ -146,12 +175,7 @@ async def inline_edit_task(request):
                 start_date=parsed["start_date"],
                 due_date=parsed["due_date"]
             )
-            current_flags = set(task["flags"].split(",") if task["flags"] else set())
-            new_flags = set(parsed["flags"])
-            for flag in current_flags - new_flags:
-                db.remove_flag_from_task(task_id, flag)
-            for flag in new_flags - current_flags:
-                db.add_flag_to_task(task_id, flag)
+            db.sync_task_flags(task_id, task["flags"] or "", parsed["flags"])
 
     if is_ajax(request):
         updated_task = db.get_task(task_id)
@@ -164,14 +188,14 @@ async def inline_subtask(request):
     parent_task = db.get_task(parent_id)
     if not parent_task:
         if is_ajax(request):
-            return JSONResponse({"success": False, "error": "Parent task not found"})
+            return JSONResponse({"success": False, "error": "Parent task not found"}, status_code=404)
         return RedirectResponse(url="/", status_code=302)
 
     form = await request.form()
     raw_input = form.get("content", "").strip()
     task_id = None
     if raw_input:
-        parsed = db.parse_task_input(raw_input)
+        parsed = parse_task_input(raw_input)
         if parsed["title"]:
             try:
                 task_id = db.create_task(
@@ -184,6 +208,7 @@ async def inline_subtask(request):
                 for flag in parsed["flags"]:
                     db.add_flag_to_task(task_id, flag)
             except ValueError:
+                logger.error("Max subtask depth exceeded for parent_id=%s", parent_id)
                 if is_ajax(request):
                     return JSONResponse({"success": False, "error": "Maximum subtask depth reached"})
     if is_ajax(request):
@@ -247,11 +272,11 @@ async def archive_page(request):
         tasks = db.get_archived_tasks_by_project(project["id"])
         if tasks:
             has_archived = True
-            archived_trees[project["id"]] = db.build_task_tree(tasks)
+            archived_trees[project["id"]] = build_task_tree(tasks)
     for project in archived_projects:
         tasks = db.get_tasks_by_project(project["id"], include_archived=True)
         has_archived = True
-        archived_trees[project["id"]] = db.build_task_tree(tasks)
+        archived_trees[project["id"]] = build_task_tree(tasks)
     return templates.TemplateResponse(
         request,
         "archive.html",

@@ -7,8 +7,9 @@ Only covers logic NOT already exercised end-to-end by test_integration.py:
 """
 
 import pytest
-from database import parse_task_input, build_task_tree
-from app import flag_color
+from task_parser import parse_task_input
+from app import flag_color, build_task_tree
+import database as db
 
 
 # ── parse_task_input ──────────────────────────────────────────────────────────
@@ -197,3 +198,47 @@ class TestBuildTaskTree:
         tree = build_task_tree(tasks)
         assert "children" in tree[0]
         assert "children" in tree[0]["children"][0]
+
+
+# ── update_task sentinel ───────────────────────────────────────────────────────
+
+class TestUpdateTask:
+    """Tests update_task() _MISSING sentinel: passing None explicitly clears a date."""
+
+    def test_clears_start_date_when_none_passed(self, monkeypatch, tmp_path):
+        db_file = tmp_path / "test.db"
+        monkeypatch.setattr(db, "DB_PATH", db_file)
+        db.init_db()
+
+        pid = db.create_project("P")
+        tid = db.create_task(pid, "Task", "minor", 0, start_date="2026-01-01")
+
+        assert db.get_task(tid)["start_date"] == "2026-01-01"
+
+        db.update_task(tid, start_date=None)
+        assert db.get_task(tid)["start_date"] is None
+
+    def test_clears_due_date_when_none_passed(self, monkeypatch, tmp_path):
+        db_file = tmp_path / "test.db"
+        monkeypatch.setattr(db, "DB_PATH", db_file)
+        db.init_db()
+
+        pid = db.create_project("P")
+        tid = db.create_task(pid, "Task", "minor", 0, due_date="2026-12-31")
+
+        assert db.get_task(tid)["due_date"] == "2026-12-31"
+
+        db.update_task(tid, due_date=None)
+        assert db.get_task(tid)["due_date"] is None
+
+    def test_missing_sentinel_preserves_existing_date(self, monkeypatch, tmp_path):
+        db_file = tmp_path / "test.db"
+        monkeypatch.setattr(db, "DB_PATH", db_file)
+        db.init_db()
+
+        pid = db.create_project("P")
+        tid = db.create_task(pid, "Task", "minor", 0, start_date="2026-06-15")
+
+        # Updating title only — start_date uses _MISSING default, should not be touched
+        db.update_task(tid, title="New title")
+        assert db.get_task(tid)["start_date"] == "2026-06-15"

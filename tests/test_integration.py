@@ -220,6 +220,43 @@ class TestInlineEditTask:
                         follow_redirects=False)
         assert r.status_code == 302
 
+    def test_clears_dates_when_tokens_removed(self, client):
+        pid = _create_project(client)
+        tid = _add_task(client, pid, "Task >2026-01-01 <2026-01-31")
+        # Verify dates set via quick-add
+        task = db.get_task(tid)
+        assert task["start_date"] == "2026-01-01"
+        assert task["due_date"] == "2026-01-31"
+        # Edit with no date tokens → both dates should clear
+        r = client.post(f"/tasks/{tid}/inline-edit",
+                        data={"content": "Task"},
+                        headers=AJAX)
+        assert r.json()["success"] is True
+        updated = db.get_task(tid)
+        assert updated["start_date"] is None
+        assert updated["due_date"] is None
+
+    def test_nonexistent_task_returns_404(self, client):
+        r = client.post("/tasks/99999/inline-edit",
+                        data={"content": "Anything"},
+                        headers=AJAX)
+        assert r.status_code == 404
+        assert r.json()["success"] is False
+
+    def test_removes_all_flags_when_none_in_edit(self, client):
+        pid = _create_project(client)
+        tid = _add_task(client, pid, "Task [alpha] [beta]")
+        task = db.get_task(tid)
+        assert "alpha" in (task["flags"] or "")
+        assert "beta" in (task["flags"] or "")
+        # Edit with no flags → both should be gone
+        r = client.post(f"/tasks/{tid}/inline-edit",
+                        data={"content": "Task"},
+                        headers=AJAX)
+        assert r.json()["success"] is True
+        updated = db.get_task(tid)
+        assert not updated["flags"]
+
 
 class TestInlineSubtask:
     def test_creates_subtask_with_correct_parent_and_level(self, client):
@@ -257,6 +294,12 @@ class TestInlineSubtask:
                         data={"content": "Orphan"},
                         headers=AJAX)
         assert r.json()["success"] is False
+
+    def test_nonexistent_parent_returns_404(self, client):
+        r = client.post("/tasks/99999/inline-subtask",
+                        data={"content": "Orphan"},
+                        headers=AJAX)
+        assert r.status_code == 404
 
     def test_subtask_inherits_project_id(self, client):
         pid = _create_project(client)
@@ -323,6 +366,12 @@ class TestToggleTask:
         assert child_id not in r.json()["affected_ids"]
         # Child must still be completed
         assert db.get_task(child_id)["completed_at"] is not None
+
+    def test_toggle_nonexistent_task_returns_empty_affected_ids(self, client):
+        r = client.get("/tasks/99999/toggle", headers=AJAX)
+        body = r.json()
+        assert body["success"] is True
+        assert body["affected_ids"] == []
 
     def test_form_get_redirects(self, client):
         pid = _create_project(client)
