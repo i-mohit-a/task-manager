@@ -1,9 +1,11 @@
 #!/bin/bash
 # Task Manager - Deploy & Server Control
 # Usage:
-#   ./deploy.sh --dev --start    Start dev server  → http://dev.taskmanager.local
-#   ./deploy.sh --dev --stop     Stop dev server
-#   ./deploy.sh --prd            Deploy to ~/.local/taskmanager → http://taskmanager.local
+#   ./deploy.sh --dev --start      Start dev server  → http://dev.taskmanager.local
+#   ./deploy.sh --dev --stop       Stop dev server
+#   ./deploy.sh --dev --restart    Restart dev server
+#   ./deploy.sh --prd              Deploy to ~/.local/taskmanager → http://taskmanager.local
+#   ./deploy.sh --prd --restart    Restart production services
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PID_FILE="/tmp/taskmanager-dev.pid"
@@ -106,13 +108,37 @@ case "$1" in
                 fi
                 stop_caddy
                 ;;
+            --restart)
+                "$0" --dev --stop
+                sleep 1
+                "$0" --dev --start
+                ;;
             *)
-                echo "Usage: $0 --dev [--start|--stop]"
+                echo "Usage: $0 --dev [--start|--stop|--restart]"
                 exit 1
                 ;;
         esac
         ;;
     --prd)
+        if [ "$2" = "--restart" ]; then
+            echo "=== Restarting production services ==="
+            if launchctl list | grep -q "com.local.taskmanager$"; then
+                launchctl unload "$LAUNCH_AGENTS/$PLIST_NAME" 2>/dev/null || true
+                sleep 1
+                launchctl load "$LAUNCH_AGENTS/$PLIST_NAME"
+                echo "App service restarted"
+            else
+                echo "App service not loaded — run ./deploy.sh --prd first"
+            fi
+            if launchctl list | grep -q "com.local.taskmanager-caddy"; then
+                launchctl unload "$LAUNCH_AGENTS/$CADDY_PLIST_NAME" 2>/dev/null || true
+                sleep 1
+                launchctl load "$LAUNCH_AGENTS/$CADDY_PLIST_NAME"
+                echo "Caddy service restarted"
+            fi
+            exit 0
+        fi
+
         set -e
         echo "=== Task Manager Deploy ==="
         echo "Source: $SCRIPT_DIR"
@@ -236,7 +262,7 @@ EOF
         fi
         ;;
     *)
-        echo "Usage: $0 [--dev --start|--dev --stop|--prd]"
+        echo "Usage: $0 [--dev --start|--dev --stop|--dev --restart|--prd|--prd --restart]"
         exit 1
         ;;
 esac

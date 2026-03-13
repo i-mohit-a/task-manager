@@ -79,14 +79,22 @@ async def projects_page(request):
 async def create_project(request):
     form = await request.form()
     name = form.get("name", "").strip()
+    project_id = None
     if name:
-        db.create_project(name)
+        project_id = db.create_project(name)
+    if is_ajax(request):
+        if project_id:
+            project = db.get_project(project_id)
+            return JSONResponse({"success": True, "project": dict(project)})
+        return JSONResponse({"success": False})
     return RedirectResponse(url="/projects", status_code=302)
 
 
 async def delete_project(request):
     project_id = int(request.path_params["project_id"])
     db.archive_project(project_id)
+    if is_ajax(request):
+        return JSONResponse({"success": True})
     return RedirectResponse(url="/projects", status_code=302)
 
 
@@ -222,6 +230,14 @@ async def flags_list(request):
     )
 
 
+async def delete_flag(request):
+    flag_id = int(request.path_params["flag_id"])
+    db.delete_flag(flag_id)
+    if is_ajax(request):
+        return JSONResponse({"success": True})
+    return RedirectResponse(url="/flags", status_code=302)
+
+
 async def archive_page(request):
     projects = db.get_all_projects()
     archived_projects = db.get_archived_projects()
@@ -309,6 +325,7 @@ routes = [
     Route("/tasks/{task_id:int}/restore", restore_task),
     Route("/tasks/{task_id:int}/move", move_task, methods=["POST"]),
     Route("/flags", flags_list),
+    Route("/flags/{flag_id:int}/delete", delete_flag),
     Route("/archive", archive_page),
 ]
 

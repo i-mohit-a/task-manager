@@ -114,14 +114,25 @@ def init_db():
 def create_project(name):
     conn = get_connection()
     cursor = conn.cursor()
+    cursor.execute("SELECT COALESCE(MAX(position), -1) + 1 FROM projects WHERE archived = 0")
+    position = cursor.fetchone()[0]
     cursor.execute(
-        "INSERT INTO projects (name, created_at) VALUES (?, ?)",
-        (name, datetime.now().isoformat())
+        "INSERT INTO projects (name, created_at, position) VALUES (?, ?, ?)",
+        (name, datetime.now().isoformat(), position)
     )
     project_id = cursor.lastrowid
     conn.commit()
     conn.close()
     return project_id
+
+
+def get_project(project_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
+    project = cursor.fetchone()
+    conn.close()
+    return project
 
 
 def get_all_projects():
@@ -543,10 +554,18 @@ def remove_flag_from_task(task_id, flag_name):
 def get_all_flags():
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT name FROM flags ORDER BY name")
-    flags = [row["name"] for row in cursor.fetchall()]
+    cursor.execute("SELECT id, name FROM flags ORDER BY name")
+    flags = [{"id": row["id"], "name": row["name"]} for row in cursor.fetchall()]
     conn.close()
     return flags
+
+
+def delete_flag(flag_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM flags WHERE id = ?", (flag_id,))
+    conn.commit()
+    conn.close()
 
 
 def build_task_tree(tasks):

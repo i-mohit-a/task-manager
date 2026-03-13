@@ -6,7 +6,16 @@
 {% if flags %}
 <ul class="task-list">
     {% for flag in flags %}
-    <li class="task-item"><span class="flag flag-color-{{ flag|flag_color }}">{{ flag }}</span></li>
+    <li class="task-item">
+        <div class="task-row">
+            <span class="task-content">
+                <span class="flag flag-color-{{ flag.name|flag_color }}">{{ flag.name }}</span>
+            </span>
+            <span class="actions-right">
+                <a href="#" class="delete-flag-link" data-flag-id="{{ flag.id }}" data-flag-name="{{ flag.name }}">[x]</a>
+            </span>
+        </div>
+    </li>
     {% endfor %}
 </ul>
 {% else %}
@@ -14,4 +23,26 @@
 {% endif %}
 
 <a href="/" class="back-link">[Back to tasks]</a>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.delete-flag-link').forEach(function(link) {
+    link.addEventListener('click', function(e) {
+        e.preventDefault();
+        var flagId = this.getAttribute('data-flag-id');
+        var flagName = this.getAttribute('data-flag-name');
+        if (!confirm('Delete flag "' + flagName + '"? It will be removed from all tasks.')) return;
+        var li = this.closest('.task-item');
+        fetch('/flags/' + flagId + '/delete', {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) li.remove();
+        });
+    });
+});
+</script>
 {% endblock %}
