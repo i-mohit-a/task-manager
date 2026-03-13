@@ -261,15 +261,21 @@
             border: none;
         }
 
-        .quick-add input[type="text"] {
+        .quick-add textarea {
             font-family: inherit;
             font-size: 14px;
+            line-height: 1.6;
             padding: 4px 0;
+            margin: 0;
             border: none;
             background: transparent;
             width: 100%;
             box-sizing: border-box;
             outline: none;
+            resize: none;
+            overflow: hidden;
+            display: block;
+            min-height: 0;
         }
 
         .quick-add-item {
@@ -452,7 +458,7 @@
             margin-top: 5px;
         }
 
-        body.compact .quick-add input[type="text"] {
+                body.compact .quick-add textarea {
             font-size: 11px;
         }
     </style>

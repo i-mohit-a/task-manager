@@ -76,6 +76,13 @@ def init_db():
     proj_columns = [row[1] for row in cursor.fetchall()]
     if "archived" not in proj_columns:
         cursor.execute("ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
+    if "position" not in proj_columns:
+        cursor.execute("ALTER TABLE projects ADD COLUMN position INTEGER DEFAULT 0")
+        cursor.execute("""
+            UPDATE projects SET position = (
+                SELECT COUNT(*) FROM projects p2 WHERE p2.created_at > projects.created_at
+            )
+        """)
 
     cursor.execute("PRAGMA table_info(tasks)")
     columns = [row[1] for row in cursor.fetchall()]
@@ -120,7 +127,7 @@ def create_project(name):
 def get_all_projects():
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM projects WHERE archived = 0 ORDER BY created_at DESC")
+    cursor.execute("SELECT * FROM projects WHERE archived = 0 ORDER BY position, created_at DESC")
     projects = cursor.fetchall()
     conn.close()
     return projects
@@ -159,6 +166,26 @@ def delete_project(project_id):
     cursor.execute("DELETE FROM projects WHERE id = ?", (project_id,))
     conn.commit()
     conn.close()
+
+
+def move_project(project_id, insert_before_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM projects WHERE archived = 0 ORDER BY position, created_at DESC")
+    ids = [row[0] for row in cursor.fetchall()]
+    if project_id not in ids:
+        conn.close()
+        return False
+    ids.remove(project_id)
+    if insert_before_id and insert_before_id in ids:
+        ids.insert(ids.index(insert_before_id), project_id)
+    else:
+        ids.append(project_id)
+    for pos, pid in enumerate(ids):
+        cursor.execute("UPDATE projects SET position = ? WHERE id = ?", (pos, pid))
+    conn.commit()
+    conn.close()
+    return True
 
 
 def create_task(project_id, title, priority, effort_hours, parent_id=None, start_date=None, due_date=None):

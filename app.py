@@ -248,6 +248,17 @@ async def archive_page(request):
     )
 
 
+async def move_project(request):
+    project_id = int(request.path_params["project_id"])
+    form = await request.form()
+    insert_before_id = form.get("insert_before_id")
+    insert_before_id = int(insert_before_id) if insert_before_id and insert_before_id != "null" else None
+    success = db.move_project(project_id, insert_before_id)
+    if is_ajax(request):
+        return JSONResponse({"success": success})
+    return RedirectResponse(url="/projects", status_code=302)
+
+
 async def restore_project(request):
     project_id = int(request.path_params["project_id"])
     db.restore_project(project_id)
@@ -289,6 +300,7 @@ routes = [
     Route("/projects/new", create_project, methods=["POST"]),
     Route("/projects/{project_id:int}/delete", delete_project),
     Route("/projects/{project_id:int}/restore", restore_project),
+    Route("/projects/{project_id:int}/move", move_project, methods=["POST"]),
     Route("/projects/{project_id:int}/tasks/quick", quick_add_task, methods=["POST"]),
     Route("/tasks/{task_id:int}/inline-edit", inline_edit_task, methods=["POST"]),
     Route("/tasks/{task_id:int}/inline-subtask", inline_subtask, methods=["POST"]),

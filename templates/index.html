@@ -35,7 +35,7 @@
     {% endfor %}
     <li class="quick-add-item">
         <form class="quick-add" action="/projects/{{ project.id }}/tasks/quick" method="post">
-            <input type="text" name="title" placeholder="- new task [flag] !priority ~4h >start <due" autocomplete="off">
+            <textarea name="title" rows="1" placeholder="- new task [flag] !priority ~4h >start <due" autocomplete="off"></textarea>
         </form>
     </li>
 </ul>
@@ -43,7 +43,7 @@
 <ul class="task-list" data-project-id="{{ project.id }}">
     <li class="quick-add-item">
         <form class="quick-add" action="/projects/{{ project.id }}/tasks/quick" method="post">
-            <input type="text" name="title" placeholder="- new task [flag] !priority ~4h >start <due" autocomplete="off">
+            <textarea name="title" rows="1" placeholder="- new task [flag] !priority ~4h >start <due" autocomplete="off"></textarea>
         </form>
     </li>
 </ul>
@@ -136,7 +136,7 @@
         if (onQuickAdd) {
             rows.forEach(function(row) { row.classList.remove('cursor'); });
             var qForm = document.querySelector('.quick-add[action="/projects/' + quickAddProjectId + '/tasks/quick"]');
-            if (qForm) qForm.querySelector('input[name="title"]').focus();
+            if (qForm) qForm.querySelector('textarea[name="title"]').focus();
             return;
         }
         if (rows.length === 0) return;
@@ -360,7 +360,48 @@
                         }
                     }
                 });
+                // Move the toggled task item to the correct position in the list
+                var mainRow = document.querySelector('.task-row[data-task-id="' + taskId + '"]');
+                if (mainRow) {
+                    var taskItem = mainRow.closest('.task-item');
+                    var list = taskItem ? taskItem.parentElement : null;
+                    if (list) {
+                        var siblings = list.querySelectorAll(':scope > .task-item');
+                        if (data.completed_at) {
+                            // Completed: move before the first already-completed sibling (excluding self)
+                            var firstCompleted = null;
+                            for (var i = 0; i < siblings.length; i++) {
+                                if (siblings[i] === taskItem) continue;
+                                var sibRow = siblings[i].querySelector(':scope > .task-row');
+                                if (sibRow && sibRow.classList.contains('completed')) {
+                                    firstCompleted = siblings[i];
+                                    break;
+                                }
+                            }
+                            if (firstCompleted) {
+                                list.insertBefore(taskItem, firstCompleted);
+                            } else {
+                                list.appendChild(taskItem);
+                            }
+                        } else {
+                            // Uncompleted: move before the first completed sibling
+                            var firstCompleted = null;
+                            for (var i = 0; i < siblings.length; i++) {
+                                var sibRow = siblings[i].querySelector(':scope > .task-row');
+                                if (sibRow && sibRow.classList.contains('completed')) {
+                                    firstCompleted = siblings[i];
+                                    break;
+                                }
+                            }
+                            if (firstCompleted) {
+                                list.insertBefore(taskItem, firstCompleted);
+                            }
+                        }
+                    }
+                }
                 repositionQuickAdd();
+                refreshRows();
+                updateCursor();
             }
         });
     }
@@ -605,7 +646,7 @@
             clearPending();
             if (onQuickAdd) {
                 var qForm = document.querySelector('.quick-add[action="/projects/' + quickAddProjectId + '/tasks/quick"]');
-                if (qForm) qForm.querySelector('input[name="title"]').blur();
+                if (qForm) qForm.querySelector('textarea[name="title"]').blur();
                 onQuickAdd = false;
                 if (cursor + 1 < rows.length) cursor++;
                 clearSelection();
@@ -643,7 +684,7 @@
             clearPending();
             if (onQuickAdd) {
                 var qForm = document.querySelector('.quick-add[action="/projects/' + quickAddProjectId + '/tasks/quick"]');
-                if (qForm) qForm.querySelector('input[name="title"]').blur();
+                if (qForm) qForm.querySelector('textarea[name="title"]').blur();
                 onQuickAdd = false;
                 clearSelection();
                 updateCursor();
@@ -778,12 +819,12 @@
 
         if (projectId) {
             var form = document.querySelector('.quick-add[action="/projects/' + projectId + '/tasks/quick"]');
-            if (form) input = form.querySelector('input[name="title"]');
+            if (form) input = form.querySelector('textarea[name="title"]');
         }
 
         if (!input) {
             var firstForm = document.querySelector('.quick-add');
-            if (firstForm) input = firstForm.querySelector('input[name="title"]');
+            if (firstForm) input = firstForm.querySelector('textarea[name="title"]');
         }
 
         if (input) input.focus();
@@ -1032,12 +1073,24 @@
     });
 
     document.querySelectorAll('.quick-add').forEach(function(form) {
-        var input = form.querySelector('input[name="title"]');
+        var input = form.querySelector('textarea[name="title"]');
+
+        function autoResize() {
+            input.style.height = 'auto';
+            input.style.height = input.scrollHeight + 'px';
+        }
+
+        input.addEventListener('input', autoResize);
 
         input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                form.dispatchEvent(new Event('submit'));
+            }
             if (e.key === 'Escape') {
                 e.preventDefault();
                 input.value = '';
+                input.style.height = 'auto';
                 input.blur();
             }
         });
@@ -1090,6 +1143,7 @@
                     }
                     updateCursor();
                     input.value = '';
+                    input.style.height = 'auto';
                 }
             });
         });
