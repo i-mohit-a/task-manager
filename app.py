@@ -6,7 +6,7 @@ from starlette.routing import Route
 from starlette.templating import Jinja2Templates
 from pathlib import Path
 
-import database as db
+import storage as db
 from task_parser import parse_task_input
 
 logger = logging.getLogger(__name__)
@@ -354,7 +354,19 @@ routes = [
     Route("/archive", archive_page),
 ]
 
-app = Starlette(routes=routes, on_startup=[db.init_db])
+async def _reload_middleware(request, call_next):
+    db.reload_if_changed()
+    return await call_next(request)
+
+
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
+
+app = Starlette(
+    routes=routes,
+    on_startup=[db.init_storage],
+    middleware=[Middleware(BaseHTTPMiddleware, dispatch=_reload_middleware)],
+)
 
 if __name__ == "__main__":
     import uvicorn

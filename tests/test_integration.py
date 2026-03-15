@@ -4,7 +4,7 @@ Each test exercises the full stack: HTTP handler → database → response.
 The `client` fixture (conftest.py) wires every test to an isolated temp DB.
 """
 
-import database as db
+import storage as db
 
 AJAX = {"Accept": "application/json"}
 

@@ -13,17 +13,17 @@
             margin: 0 auto;
             padding: 20px;
             padding-bottom: 60px;
-            background: #fafafa;
-            color: #333;
+            background: #ffffff;
+            color: #000000;
         }
 
         a {
-            color: #0066cc;
-            text-decoration: none;
+            color: #000000;
+            text-decoration: underline;
         }
 
         a:hover {
-            text-decoration: underline;
+            text-decoration: none;
         }
 
         h1 {
@@ -36,7 +36,7 @@
             display: flex;
             justify-content: space-between;
             align-items: baseline;
-            border-bottom: 1px solid #ccc;
+            border-bottom: 1px solid #000;
             padding-bottom: 8px;
             margin-bottom: 16px;
         }
@@ -46,7 +46,7 @@
             margin-top: 24px;
             margin-bottom: 8px;
             padding: 4px 0;
-            border-bottom: 1px dashed #999;
+            border-bottom: 1px solid #000;
             display: flex;
             justify-content: space-between;
             align-items: baseline;
@@ -58,18 +58,18 @@
 
         .sort-controls a {
             margin-left: 8px;
-            color: #888;
+            color: #555;
         }
 
         .sort-controls a:hover {
-            color: #0066cc;
+            color: #000;
         }
 
         .sort-input {
             font-family: inherit;
             font-size: 11px;
             padding: 2px 4px;
-            border: 1px solid #ccc;
+            border: 1px solid #000;
             width: 80px;
         }
 
@@ -101,11 +101,11 @@
         }
 
         body.show-lines .task-row {
-            border-bottom: 1px dotted #ddd;
+            border-bottom: 1px dotted #000;
         }
 
         .task-row:hover {
-            border-bottom: 1px dotted #ddd;
+            border-bottom: 1px dotted #000;
         }
 
         .task-content {
@@ -119,23 +119,24 @@
             font-size: 10px;
             white-space: nowrap;
             margin-left: 12px;
-            color: #aaa;
+            color: #555;
             display: flex;
             gap: 3px;
             align-items: baseline;
         }
 
         .actions-right a {
-            color: #7ab3d4;
+            color: #555;
+            text-decoration: none;
         }
 
         .actions-right a:hover {
-            color: #3a7fa8;
+            color: #000;
             text-decoration: none;
         }
 
         .task-row.completed {
-            color: #888;
+            color: #666;
         }
 
         .task-row.completed .task-content {
@@ -150,41 +151,42 @@
             padding: 1px 4px;
             font-size: 12px;
             margin-left: 4px;
-            border-radius: 2px;
         }
 
-        .priority-critical { background: #f2d4d4; color: #8b5a5a; }
-        .priority-major { background: #f2e8d4; color: #8b7a5a; }
-        .priority-minor { background: #e4e8e8; color: #6b6b6b; }
+        .priority-critical { color: #000; }
+        .priority-critical::before { content: "[C] "; }
+        .priority-major { color: #000; }
+        .priority-major::before { content: "[M] "; }
+        .priority-minor { display: none; }
 
         .flag {
             padding: 1px 4px;
             font-size: 12px;
             margin-left: 4px;
-            border-radius: 2px;
+            border: 1px solid #000;
         }
 
-        .flag-color-0 { background: #d4e0d4; color: #4a6b4a; }
-        .flag-color-1 { background: #d4d4e0; color: #4a5a6b; }
-        .flag-color-2 { background: #e0d4d4; color: #6b4a4a; }
-        .flag-color-3 { background: #e0e4d4; color: #6b6444; }
-        .flag-color-4 { background: #d4e4e0; color: #4a6b68; }
-        .flag-color-5 { background: #e4d4e8; color: #6a4a68; }
-        .flag-color-6 { background: #d4e0d4; color: #5a6b40; }
-        .flag-color-7 { background: #e0b4e8; color: #5c4a6b; }
+        .flag-color-0,
+        .flag-color-1,
+        .flag-color-2,
+        .flag-color-3,
+        .flag-color-4,
+        .flag-color-5,
+        .flag-color-6,
+        .flag-color-7 { background: #fff; color: #000; }
 
         .meta {
-            color: #888;
+            color: #555;
             font-size: 12px;
         }
 
         .meta.date {
             margin-left: 8px;
-            color: #aaa;
+            color: #555;
         }
 
         .meta.done-date {
-            color: #7a9a7a;
+            color: #555;
         }
 
         [data-meta]::after {
@@ -200,19 +202,20 @@
         }
 
         .actions a {
-            color: #7ab3d4;
+            color: #555;
+            text-decoration: none;
         }
 
         .actions a:hover {
-            color: #3a7fa8;
+            color: #000;
             text-decoration: none;
         }
 
         form {
             margin: 16px 0;
             padding: 0;
-            background: #f0f0f0;
-            border: 1px solid #ddd;
+            background: #ffffff;
+            border: 1px solid #000;
         }
 
         form label {
@@ -227,7 +230,7 @@
             font-size: 14px;
             padding: 4px 8px;
             margin-bottom: 8px;
-            border: 1px solid #ccc;
+            border: 1px solid #000;
             width: 100%;
             box-sizing: border-box;
         }
@@ -290,7 +293,7 @@
             font-family: inherit;
             font-size: 14px;
             padding: 2px 6px;
-            border: 1px solid #99a;
+            border: 1px solid #000;
             background: #fff;
             width: 500px;
             outline: none;
@@ -298,24 +301,24 @@
 
         .subtask-input-row {
             padding: 4px 0;
-            border-bottom: 1px dotted #ddd;
+            border-bottom: 1px dotted #000;
         }
 
         .message {
             padding: 8px;
             margin: 8px 0;
-            background: #ffffcc;
-            border: 1px solid #cccc00;
+            background: #ffffff;
+            border: 1px solid #000;
         }
 
         .nav a {
             margin-left: 16px;
             font-size: 13px;
-            color: #888;
+            color: #555;
         }
 
         .nav a:hover {
-            color: #333;
+            color: #000;
             text-decoration: none;
         }
 
@@ -323,11 +326,11 @@
             display: block;
             margin-top: 24px;
             font-size: 10px;
-            color: #7ab3d4;
+            color: #555;
         }
 
         .back-link:hover {
-            color: #3a7fa8;
+            color: #000;
             text-decoration: none;
         }
 
@@ -338,28 +341,28 @@
 
         .cursor-indicator::before {
             content: '-';
-            color: #666;
+            color: #555;
         }
 
         .task-row.cursor .cursor-indicator::before {
             content: '>';
-            color: #333;
+            color: #000;
             font-weight: bold;
         }
 
         .task-row.selected {
-            background: #e8f0ff;
+            background: #e0e0e0;
         }
 
         .task-row.selected .cursor-indicator::before {
             content: '*';
-            color: #0066cc;
+            color: #000;
             font-weight: bold;
         }
 
         .task-row.cursor.selected .cursor-indicator::before {
             content: '>';
-            color: #0066cc;
+            color: #000;
             font-weight: bold;
         }
 
@@ -368,17 +371,15 @@
             bottom: 16px;
             right: 16px;
             font-size: 11px;
-            color: #888;
-            background: #f5f5f5;
+            color: #555;
+            background: #fff;
             padding: 8px 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            border: 1px solid #000;
         }
 
         .kbd-hint kbd {
             background: #e8e8e8;
             padding: 1px 4px;
-            border-radius: 2px;
             font-family: inherit;
         }
 
@@ -388,7 +389,7 @@
             right: 16px;
             font-size: 20px;
             cursor: pointer;
-            color: #888;
+            color: #555;
             background: none;
             border: none;
             padding: 2px 6px;
@@ -397,7 +398,7 @@
         }
 
         .settings-btn:hover {
-            color: #333;
+            color: #000;
         }
 
         .settings-dropdown {
@@ -406,7 +407,7 @@
             top: 40px;
             right: 16px;
             background: #fff;
-            border: 1px solid #ccc;
+            border: 1px solid #000;
             padding: 10px 14px;
             font-size: 12px;
             z-index: 100;
@@ -425,23 +426,23 @@
         }
 
         .settings-row label {
-            color: #555;
+            color: #000;
         }
 
         .settings-toggle {
             font-family: inherit;
             font-size: 11px;
             cursor: pointer;
-            background: #e8e8e8;
-            border: 1px solid #ccc;
+            background: #fff;
+            border: 1px solid #000;
             padding: 1px 7px;
-            color: #333;
+            color: #000;
         }
 
         .settings-toggle.active {
-            background: #333;
+            background: #000;
             color: #fff;
-            border-color: #333;
+            border-color: #000;
         }
 
         body.compact {
