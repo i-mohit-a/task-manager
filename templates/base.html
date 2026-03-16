@@ -13,7 +13,7 @@
             margin: 0 auto;
             padding: 20px;
             padding-bottom: 60px;
-            background: #fafafa;
+            background: #fff;
             color: #333;
         }
 
@@ -101,11 +101,11 @@
         }
 
         body.show-lines .task-row {
-            border-bottom: 1px dotted #ddd;
+            border-bottom: 1px solid #ebebeb;
         }
 
         .task-row:hover {
-            border-bottom: 1px dotted #ddd;
+            border-bottom: 1px solid #ebebeb;
         }
 
         .task-content {
@@ -139,7 +139,14 @@
         }
 
         .task-row.completed .task-content {
-            text-decoration: line-through;
+        }
+
+        .task-list > .task-item:has(.task-row.completed) {
+            border-top: 1px solid #ebebeb;
+        }
+
+        .task-list > .task-item:has(.task-row.completed) ~ .task-item:has(.task-row.completed) {
+            border-top: none;
         }
 
         .indent-1 { padding-left: 24px; }
@@ -148,18 +155,18 @@
 
         .priority-badge {
             padding: 1px 4px;
-            font-size: 12px;
+            font-size: 0.8em;
             margin-left: 4px;
             border-radius: 2px;
         }
 
         .priority-critical { background: #f2d4d4; color: #8b5a5a; }
         .priority-major { background: #f2e8d4; color: #8b7a5a; }
-        .priority-minor { background: #e4e8e8; color: #6b6b6b; }
+        .priority-minor { background: #d4e4f2; color: #4a6b8b; }
 
         .flag {
             padding: 1px 4px;
-            font-size: 12px;
+            font-size: 0.8em;
             margin-left: 4px;
             border-radius: 2px;
         }
@@ -175,7 +182,7 @@
 
         .meta {
             color: #888;
-            font-size: 12px;
+            font-size: 0.85em;
         }
 
         .meta.date {
@@ -465,6 +472,26 @@
                 body.compact .quick-add textarea {
             font-size: 11px;
         }
+
+        body.dense {
+            line-height: 1.2;
+        }
+
+        body.dense .page-header {
+            padding-bottom: 4px;
+            margin-bottom: 8px;
+        }
+
+        body.dense .project-header {
+            margin-top: 10px;
+            margin-bottom: 2px;
+            padding: 1px 0;
+        }
+
+        body.dense .task-row {
+            padding-top: 1px;
+            padding-bottom: 1px;
+        }
     </style>
 </head>
 <body>
@@ -477,6 +504,10 @@
         <div class="settings-row" style="margin-top: 8px;">
             <label>Task lines</label>
             <button class="settings-toggle" id="lines-toggle">show</button>
+        </div>
+        <div class="settings-row" style="margin-top: 8px;">
+            <label>Dense</label>
+            <button class="settings-toggle" id="dense-toggle">on</button>
         </div>
     </div>
     <div class="page-header">
@@ -496,6 +527,7 @@
         var dropdown = document.getElementById('settings-dropdown');
         var compactToggle = document.getElementById('compact-toggle');
         var linesToggle = document.getElementById('lines-toggle');
+        var denseToggle = document.getElementById('dense-toggle');
 
         if (localStorage.getItem('compact') === '1') {
             document.body.classList.add('compact');
@@ -505,6 +537,11 @@
         if (localStorage.getItem('showLines') === '1') {
             document.body.classList.add('show-lines');
             linesToggle.classList.add('active');
+        }
+
+        if (localStorage.getItem('dense') === '1') {
+            document.body.classList.add('dense');
+            denseToggle.classList.add('active');
         }
 
         btn.addEventListener('click', function(e) {
@@ -530,6 +567,12 @@
             var showLines = document.body.classList.toggle('show-lines');
             linesToggle.classList.toggle('active', showLines);
             localStorage.setItem('showLines', showLines ? '1' : '0');
+        });
+
+        denseToggle.addEventListener('click', function() {
+            var isDense = document.body.classList.toggle('dense');
+            denseToggle.classList.toggle('active', isDense);
+            localStorage.setItem('dense', isDense ? '1' : '0');
         });
     })();
     </script>

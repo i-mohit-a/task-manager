@@ -19,7 +19,7 @@
     {% for task in tasks recursive %}
     <li class="task-item">
         <div class="task-row indent-{{ task.level }}{% if task.completed_at %} completed{% endif %}" data-task-id="{{ task.id }}" data-title="{{ task.title }}" data-priority="{{ task.priority }}" data-effort="{{ task.effort_hours }}" data-flags="{{ task.flags|default('', true) }}" data-start-date="{{ task.start_date or '' }}" data-due-date="{{ task.due_date or '' }}" data-level="{{ task.level }}" data-project-id="{{ task.project_id }}">
-            <span class="task-content"><span class="cursor-indicator"></span><span class="priority-badge priority-{{ task.priority }}">{{ task.priority[:1] }}</span>{% if task.flags %}{% for flag_name in task.flags.split(',') %}<span class="flag flag-color-{{ flag_name|flag_color }}">{{ flag_name }}</span>{% endfor %}{% endif %} {{ task.title }}{% if task.effort_hours %} <span class="meta">{{ task.effort_hours }}h</span>{% endif %}{% if task.start_date %} <span class="meta">&gt;{{ task.start_date }}</span>{% endif %}{% if task.due_date %} <span class="meta">&lt;{{ task.due_date }}</span>{% endif %} <span class="meta" data-meta="{{ task.created_at[:10] }}"></span>{% if task.completed_at %} <span class="meta done-date" data-done-date="{{ task.completed_at[:10] }}"></span>{% endif %}</span>
+            <span class="task-content"><span class="cursor-indicator"></span><span class="priority-badge priority-{{ task.priority }}">{{ task.priority[:1] }}</span> {{ task.title }}{% if task.flags %}{% for flag_name in task.flags.split(',') %} <span class="flag flag-color-{{ flag_name|flag_color }}">{{ flag_name }}</span>{% endfor %}{% endif %}{% if task.effort_hours %} <span class="meta">{{ task.effort_hours }}h</span>{% endif %}{% if task.start_date %} <span class="meta">&gt;{{ task.start_date }}</span>{% endif %}{% if task.due_date %} <span class="meta">&lt;{{ task.due_date }}</span>{% endif %} <span class="meta" data-meta="{{ task.created_at[:10] }}"></span>{% if task.completed_at %} <span class="meta done-date" data-done-date="{{ task.completed_at[:10] }}"></span>{% endif %}</span>
             <span class="actions-right">
                 <a href="#" class="toggle-link" data-task-id="{{ task.id }}">{% if task.completed_at %}[undo]{% else %}[done]{% endif %}</a>
                 <a href="#" class="edit-link" data-task-id="{{ task.id }}">[edit]</a>
@@ -219,8 +219,8 @@
             '<span class="task-content">' +
             '<span class="cursor-indicator"></span>' +
             '<span class="priority-badge priority-' + task.priority + '">' + task.priority.charAt(0) + '</span>' +
-            flagsHtml +
             ' ' + task.title +
+            flagsHtml +
             effortHtml +
             startDateHtml +
             dueDateHtml +
@@ -265,8 +265,8 @@
         row.querySelector('.task-content').innerHTML =
             '<span class="cursor-indicator"></span>' +
             '<span class="priority-badge priority-' + task.priority + '">' + task.priority.charAt(0) + '</span>' +
-            flagsHtml +
             ' ' + task.title +
+            flagsHtml +
             effortHtml +
             startDateHtml +
             dueDateHtml +
