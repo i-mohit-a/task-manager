@@ -63,17 +63,53 @@
 (function() {
     var rows = document.querySelectorAll('.task-row[data-task-id]');
     var cursor = 0;
+    var navIndex = 0;
     var selectionAnchor = null;
     var pending = '';
     var pendingTimer = null;
     var editingRow = null;
     var subtaskInput = null;
-    var onQuickAdd = false;
-    var quickAddProjectId = null;
+
+    function getNavItems() {
+        return Array.from(document.querySelectorAll(
+            '.task-row[data-task-id], .quick-add textarea[name="title"]'
+        ));
+    }
+
+    function navigateTo(idx, withShift) {
+        var items = getNavItems();
+        idx = Math.max(0, Math.min(idx, items.length - 1));
+        navIndex = idx;
+        var item = items[idx];
+        if (!item) return;
+        if (item.tagName === 'TEXTAREA') {
+            rows.forEach(function(r) { r.classList.remove('cursor', 'selected'); });
+            selectionAnchor = null;
+            item.focus();
+            item.scrollIntoView({ block: 'nearest' });
+        } else {
+            for (var i = 0; i < rows.length; i++) {
+                if (rows[i] === item) {
+                    updateSelection(i, withShift);
+                    cursor = i;
+                    break;
+                }
+            }
+            updateCursor();
+        }
+    }
+
+    function syncNavIndex() {
+        var items = getNavItems();
+        for (var i = 0; i < items.length; i++) {
+            if (items[i] === rows[cursor]) { navIndex = i; return; }
+        }
+    }
 
     function refreshRows() {
         rows = document.querySelectorAll('.task-row[data-task-id]');
         repositionQuickAdd();
+        syncNavIndex();
     }
 
     function repositionQuickAdd() {
@@ -133,12 +169,6 @@
     }
 
     function updateCursor() {
-        if (onQuickAdd) {
-            rows.forEach(function(row) { row.classList.remove('cursor'); });
-            var qForm = document.querySelector('.quick-add[action="/projects/' + quickAddProjectId + '/tasks/quick"]');
-            if (qForm) qForm.querySelector('textarea[name="title"]').focus();
-            return;
-        }
         if (rows.length === 0) return;
         cursor = Math.max(cursor, 0);
         cursor = Math.min(cursor, rows.length - 1);
@@ -148,6 +178,7 @@
         if (rows[cursor]) {
             rows[cursor].scrollIntoView({ block: 'nearest' });
         }
+        syncNavIndex();
     }
 
     function getCurrentRow() {
@@ -283,12 +314,11 @@
 
     function bindRowEvents(row) {
         row.addEventListener('click', function() {
-            onQuickAdd = false;
             for (var i = 0; i < rows.length; i++) {
                 if (rows[i] === row) { cursor = i; break; }
             }
             clearSelection();
-            updateCursor();
+            updateCursor(); // syncNavIndex called inside updateCursor
         });
 
         var toggleLink = row.querySelector('.toggle-link');
@@ -401,6 +431,17 @@
                 }
                 repositionQuickAdd();
                 refreshRows();
+                // If cursor landed on the just-completed task (e.g. it was last in
+                // its parent's subtask list and didn't move to a lower index),
+                // walk backward to the nearest incomplete task instead.
+                if (data.completed_at && rows[cursor] && rows[cursor].classList.contains('completed')) {
+                    for (var ci = cursor - 1; ci >= 0; ci--) {
+                        if (!rows[ci].classList.contains('completed')) {
+                            cursor = ci;
+                            break;
+                        }
+                    }
+                }
                 updateCursor();
             }
         });
@@ -591,43 +632,18 @@
 
     function handleKey(e) {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-            var isArrow = e.key === 'ArrowDown' || e.key === 'ArrowUp';
-            var isEmptyQuickAdd = isArrow &&
-                                  e.target.name === 'title' &&
-                                  e.target.value === '' &&
-                                  e.target.closest('.quick-add');
-            if (!isEmptyQuickAdd) return;
-            // Empty quick-add + arrow: ensure onQuickAdd state is set up
-            if (!onQuickAdd) {
-                var qf = e.target.closest('.quick-add');
-                var m = qf.action.match(/\/projects\/(\d+)\//);
-                if (m) {
-                    quickAddProjectId = m[1];
-                    onQuickAdd = true;
-                    // Set cursor to last INCOMPLETE task of this project (quick-add sits just after it)
-                    var lastIncompleteIdx = -1;
-                    for (var ri = 0; ri < rows.length; ri++) {
-                        if (rows[ri].getAttribute('data-project-id') === quickAddProjectId &&
-                            !rows[ri].classList.contains('completed')) {
-                            lastIncompleteIdx = ri;
-                        }
-                    }
-                    if (lastIncompleteIdx >= 0) {
-                        cursor = lastIncompleteIdx;
-                    } else {
-                        // All completed: use last task of project
-                        for (var ri = rows.length - 1; ri >= 0; ri--) {
-                            if (rows[ri].getAttribute('data-project-id') === quickAddProjectId) {
-                                cursor = ri;
-                                break;
-                            }
-                        }
-                    }
-                } else {
-                    return;
+            // Arrow from empty quick-add: sync navIndex then blur, fall through to move
+            if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') &&
+                e.target.name === 'title' && e.target.value === '' && e.target.closest('.quick-add')) {
+                var items = getNavItems();
+                for (var i = 0; i < items.length; i++) {
+                    if (items[i] === e.target) { navIndex = i; break; }
                 }
+                e.target.blur();
+                // fall through to arrow handlers below
+            } else {
+                return;
             }
-            // fall through to arrow handlers below
         }
 
         var key = e.key;
@@ -644,76 +660,14 @@
 
         if (key === 'ArrowDown') {
             clearPending();
-            if (onQuickAdd) {
-                var qForm = document.querySelector('.quick-add[action="/projects/' + quickAddProjectId + '/tasks/quick"]');
-                if (qForm) qForm.querySelector('textarea[name="title"]').blur();
-                onQuickAdd = false;
-                if (cursor + 1 < rows.length) cursor++;
-                clearSelection();
-                updateCursor();
-            } else if (rows.length > 0) {
-                var curProjId = rows[cursor] ? rows[cursor].getAttribute('data-project-id') : null;
-                var nextRow = rows[cursor + 1];
-                var nextProjId = nextRow ? nextRow.getAttribute('data-project-id') : null;
-                var curCompleted = rows[cursor] ? rows[cursor].classList.contains('completed') : false;
-                var nextCompleted = nextRow ? nextRow.classList.contains('completed') : false;
-                if (curProjId && nextProjId !== curProjId && !curCompleted) {
-                    // Project boundary: enter quick-add of current project (only if on incomplete task)
-                    onQuickAdd = true;
-                    quickAddProjectId = curProjId;
-                    clearSelection();
-                    updateCursor();
-                } else if (curProjId && nextProjId === curProjId && !curCompleted && nextCompleted) {
-                    // Transition from incomplete to completed within same project: enter quick-add
-                    onQuickAdd = true;
-                    quickAddProjectId = curProjId;
-                    clearSelection();
-                    updateCursor();
-                } else {
-                    var newCursor = Math.min(cursor + 1, rows.length - 1);
-                    updateSelection(newCursor, e.shiftKey);
-                    cursor = newCursor;
-                    updateCursor();
-                }
-            }
+            navigateTo(navIndex + 1, e.shiftKey);
             e.preventDefault();
             return;
         }
 
         if (key === 'ArrowUp') {
             clearPending();
-            if (onQuickAdd) {
-                var qForm = document.querySelector('.quick-add[action="/projects/' + quickAddProjectId + '/tasks/quick"]');
-                if (qForm) qForm.querySelector('textarea[name="title"]').blur();
-                onQuickAdd = false;
-                clearSelection();
-                updateCursor();
-            } else if (rows.length > 0) {
-                var curProjId = rows[cursor] ? rows[cursor].getAttribute('data-project-id') : null;
-                var prevRow = rows[cursor - 1];
-                var prevProjId = prevRow ? prevRow.getAttribute('data-project-id') : null;
-                var curCompleted = rows[cursor] ? rows[cursor].classList.contains('completed') : false;
-                var prevCompleted = prevRow ? prevRow.classList.contains('completed') : false;
-                if (cursor > 0 && prevProjId !== curProjId) {
-                    // Cross project boundary going up: land on last task of previous project
-                    var newCursor = cursor - 1;
-                    updateSelection(newCursor, e.shiftKey);
-                    cursor = newCursor;
-                    updateCursor();
-                } else if (cursor > 0 && prevProjId === curProjId && curCompleted && !prevCompleted) {
-                    // Transition from completed to incomplete within same project: enter quick-add
-                    cursor--;  // point cursor at last incomplete task
-                    onQuickAdd = true;
-                    quickAddProjectId = curProjId;
-                    clearSelection();
-                    updateCursor();
-                } else {
-                    var newCursor = Math.max(cursor - 1, 0);
-                    updateSelection(newCursor, e.shiftKey);
-                    cursor = newCursor;
-                    updateCursor();
-                }
-            }
+            navigateTo(navIndex - 1, e.shiftKey);
             e.preventDefault();
             return;
         }
@@ -721,7 +675,6 @@
         if (key === 'Home') {
             clearPending();
             clearSelection();
-            onQuickAdd = false;
             cursor = 0;
             updateCursor();
             e.preventDefault();
@@ -730,7 +683,6 @@
 
         if (key === 'End') {
             clearSelection();
-            onQuickAdd = false;
             if (rows.length > 0) {
                 cursor = rows.length - 1;
                 updateCursor();
@@ -742,7 +694,6 @@
         if (key === 'Escape') {
             clearPending();
             clearSelection();
-            onQuickAdd = false;
             e.preventDefault();
             return;
         }
@@ -827,7 +778,13 @@
             if (firstForm) input = firstForm.querySelector('textarea[name="title"]');
         }
 
-        if (input) input.focus();
+        if (input) {
+            var items = getNavItems();
+            for (var i = 0; i < items.length; i++) {
+                if (items[i] === input) { navIndex = i; break; }
+            }
+            input.focus();
+        }
     }
 
     function getTaskItemWithSubtree(row) {
@@ -1093,10 +1050,6 @@
                 input.style.height = 'auto';
                 input.blur();
             }
-        });
-
-        input.addEventListener('blur', function() {
-            setTimeout(function() { onQuickAdd = false; }, 150);
         });
 
         form.addEventListener('submit', function(e) {

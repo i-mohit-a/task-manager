@@ -13,6 +13,7 @@
                 <span class="meta date">{{ project.created_at[:10] }}</span>
             </span>
             <span class="actions-right">
+                <a href="#" class="edit-proj-link" data-project-id="{{ project.id }}">[e]</a>
                 <a href="/projects/{{ project.id }}/delete" class="delete-link">[x]</a>
             </span>
         </div>
@@ -28,7 +29,7 @@
 <a href="/" class="back-link">[Back to tasks]</a>
 
 <div class="kbd-hint">
-    <kbd>xx</kbd> archive | <kbd>nn</kbd> new | <kbd>alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> move | <kbd>shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> select
+    <kbd>ee</kbd> rename | <kbd>xx</kbd> archive | <kbd>nn</kbd> new | <kbd>alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> move | <kbd>shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> select
 </div>
 {% endblock %}
 
@@ -42,6 +43,7 @@
     var onQuickAdd = false;
     var pending = '';
     var pendingTimer = null;
+    var editingRow = null;
 
     var form = list.querySelector('.quick-add');
     var textarea = form.querySelector('textarea[name="name"]');
@@ -144,6 +146,7 @@
                             '<span class="meta date">' + p.created_at.substring(0, 10) + '</span>' +
                         '</span>' +
                         '<span class="actions-right">' +
+                            '<a href="#" class="edit-proj-link" data-project-id="' + p.id + '">[e]</a> ' +
                             '<a href="/projects/' + p.id + '/delete" class="delete-link">[x]</a>' +
                         '</span>' +
                     '</div>';
@@ -157,10 +160,7 @@
                     clearSelection();
                     updateCursor();
                 });
-                newRow.querySelector('.delete-link').addEventListener('click', function(e) {
-                    e.preventDefault();
-                    archiveProject(p.id, newRow);
-                });
+                bindRowEvents(newRow);
 
                 rows = Array.from(document.querySelectorAll('.task-row[data-project-id]'));
                 cursor = rows.indexOf(newRow);
@@ -172,6 +172,103 @@
             }
         });
     });
+
+    function startEdit() {
+        if (editingRow || rows.length === 0) { return; }
+        var row = rows[cursor];
+        if (!row) { return; }
+        editingRow = row;
+
+        var projectId = row.getAttribute('data-project-id');
+        var content = row.querySelector('.task-content');
+        var actions = row.querySelector('.actions-right');
+        var originalHTML = content.innerHTML;
+        var actionsHTML = actions.innerHTML;
+        var nameEl = content.querySelector('a');
+        var currentName = nameEl ? nameEl.textContent : '';
+
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'inline-edit';
+        input.value = currentName;
+
+        content.innerHTML = '<span class="cursor-indicator"></span>';
+        content.appendChild(input);
+        actions.innerHTML = '<span class="meta">Enter to save, Esc to cancel</span>';
+
+        function cleanup() {
+            content.innerHTML = originalHTML;
+            actions.innerHTML = actionsHTML;
+            editingRow = null;
+            bindRowEvents(row);
+        }
+
+        var saving = false;
+
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                var newName = input.value.trim();
+                if (!newName) { cleanup(); return; }
+                saving = true;
+                var fd = new FormData();
+                fd.append('name', newName);
+                fetch('/projects/' + projectId + '/rename', {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json' },
+                    body: fd
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    saving = false;
+                    if (data.success && data.project) {
+                        content.innerHTML = originalHTML;
+                        var a = content.querySelector('a');
+                        if (a) { a.textContent = data.project.name; }
+                        actions.innerHTML = actionsHTML;
+                        editingRow = null;
+                        bindRowEvents(row);
+                    } else {
+                        cleanup();
+                    }
+                })
+                .catch(function(err) {
+                    saving = false;
+                    cleanup();
+                });
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cleanup();
+            }
+        });
+
+        input.addEventListener('blur', function() {
+            setTimeout(function() { if (editingRow === row && !saving) { cleanup(); } }, 100);
+        });
+
+        input.focus();
+        input.select();
+    }
+
+    function bindRowEvents(row) {
+        var editLink = row.querySelector('.edit-proj-link');
+        if (editLink) {
+            editLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                cursor = rows.indexOf(row);
+                clearSelection();
+                updateCursor();
+                startEdit();
+            });
+        }
+        var deleteLink = row.querySelector('.delete-link');
+        if (deleteLink) {
+            deleteLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                archiveProject(row.getAttribute('data-project-id'), row);
+            });
+        }
+    }
 
     function archiveProject(projectId, row) {
         if (!confirm('Archive project and all tasks?')) return;
@@ -195,16 +292,8 @@
         });
     }
 
-    // Bind delete links on existing rows
-    rows.forEach(function(row) {
-        var deleteLink = row.querySelector('.delete-link');
-        if (deleteLink) {
-            deleteLink.addEventListener('click', function(e) {
-                e.preventDefault();
-                archiveProject(row.getAttribute('data-project-id'), row);
-            });
-        }
-    });
+    // Bind edit + delete links on existing rows
+    rows.forEach(function(row) { bindRowEvents(row); });
 
     function moveSelectedProjects(direction) {
         var sel = getSelected();
@@ -329,6 +418,13 @@
                 onQuickAdd = true;
                 clearSelection();
                 updateCursor();
+                e.preventDefault();
+                return;
+            }
+
+            if (combo === 'ee' && rows.length > 0) {
+                clearPending();
+                startEdit();
                 e.preventDefault();
                 return;
             }

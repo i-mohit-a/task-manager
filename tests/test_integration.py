@@ -367,6 +367,21 @@ class TestToggleTask:
         # Child must still be completed
         assert db.get_task(child_id)["completed_at"] is not None
 
+    def test_undo_child_blocked_when_parent_is_done(self, client):
+        pid = _create_project(client)
+        parent_id = _add_task(client, pid, "Parent")
+        child_id = _add_subtask(client, parent_id, "Child")
+
+        # Complete parent (cascades to child)
+        client.get(f"/tasks/{parent_id}/toggle", headers=AJAX)
+        assert db.get_task(child_id)["completed_at"] is not None
+
+        # Attempt to undo child — should be blocked because parent is still done
+        r = client.get(f"/tasks/{child_id}/toggle", headers=AJAX)
+        body = r.json()
+        assert body["affected_ids"] == []
+        assert db.get_task(child_id)["completed_at"] is not None
+
     def test_toggle_nonexistent_task_returns_empty_affected_ids(self, client):
         r = client.get("/tasks/99999/toggle", headers=AJAX)
         body = r.json()

@@ -119,6 +119,18 @@ async def create_project(request):
     return RedirectResponse(url="/projects", status_code=302)
 
 
+async def rename_project(request):
+    project_id = int(request.path_params["project_id"])
+    form = await request.form()
+    name = form.get("name", "").strip()
+    if name:
+        db.rename_project(project_id, name)
+    if is_ajax(request):
+        project = db.get_project(project_id)
+        return JSONResponse({"success": bool(name), "project": dict(project) if project else None})
+    return RedirectResponse(url="/projects", status_code=302)
+
+
 async def delete_project(request):
     project_id = int(request.path_params["project_id"])
     db.archive_project(project_id)
@@ -339,6 +351,7 @@ routes = [
     Route("/", index),
     Route("/projects", projects_page),
     Route("/projects/new", create_project, methods=["POST"]),
+    Route("/projects/{project_id:int}/rename", rename_project, methods=["POST"]),
     Route("/projects/{project_id:int}/delete", delete_project),
     Route("/projects/{project_id:int}/restore", restore_project),
     Route("/projects/{project_id:int}/move", move_project, methods=["POST"]),

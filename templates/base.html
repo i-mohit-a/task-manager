@@ -141,12 +141,8 @@
         .task-row.completed .task-content {
         }
 
-        .task-list > .task-item:has(.task-row.completed) {
-            border-top: 1px solid #ebebeb;
-        }
-
-        .task-list > .task-item:has(.task-row.completed) ~ .task-item:has(.task-row.completed) {
-            border-top: none;
+        .task-list[data-project-id] > .quick-add-item:has(+ .task-item) {
+            border-bottom: 1px solid #ebebeb;
         }
 
         .indent-1 { padding-left: 24px; }

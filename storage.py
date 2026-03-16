@@ -285,6 +285,14 @@ def get_archived_projects() -> list:
     return list(_archived_projects)
 
 
+def rename_project(project_id: int, name: str) -> None:
+    project = _id_map.get(project_id)
+    if not project or project not in _projects:
+        return
+    project["name"] = name
+    _save_active()
+
+
 def archive_project(project_id: int) -> None:
     project = _id_map.get(project_id)
     if not project or project not in _projects:
@@ -432,6 +440,11 @@ def toggle_task_complete(task_id: int) -> list[int]:
     affected_ids = []
 
     if task["completed_at"]:
+        # Block undo if parent is still completed
+        if task["parent_id"]:
+            parent = _id_map.get(task["parent_id"])
+            if parent and parent["completed_at"]:
+                return []
         # Undo: revert task + subtasks completed at the same cascade timestamp
         cascade_ts = task.get("_cascade_ts") or task["completed_at"]
         task["completed_at"] = None
