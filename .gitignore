@@ -22,6 +22,10 @@ Caddyfile
 # macOS
 .DS_Store
 
+# VS Code extension build artifacts
+task-manager-vscode*/node_modules/
+task-manager-vscode*/out/
+
 # Editor
 .vscode/
 .idea/

@@ -1,17 +1,17 @@
 # Task Manager
 
-A keyboard-driven local task manager built with Python (Starlette) and SQLite. Runs as a background service accessible via browser at a local domain.
+A keyboard-driven local task manager. Stores tasks in a plain text file. Runs as a local web app and as a VS Code extension.
 
 ---
 
 ## Requirements
 
-- macOS (uses launchd for production background service)
+- macOS
 - Python 3.8+
-- Caddy (reverse proxy for local domain routing)
+- `uvicorn` and `starlette` (see `requirements.txt`)
 
 ```bash
-brew install caddy
+pip install -r requirements.txt
 ```
 
 ---
@@ -20,105 +20,74 @@ brew install caddy
 
 ```
 task-manager/
-├── app.py                # Starlette web app, routes, AJAX handlers
-├── database.py           # SQLite layer, migrations, task tree building
-├── task_parser.py        # Parses inline task syntax
-├── requirements.txt      # Python dependencies
-├── deploy.sh             # Dev and production deployment script
-└── templates/
-    ├── base.html         # Layout, CSS, settings UI
-    ├── index.html        # Main task view and keyboard navigation JS
-    ├── projects.html     # Project management
-    ├── flags.html        # Flag listing and deletion
-    └── archive.html      # Archived tasks and projects
+├── app.py                    # Starlette web app, routes, AJAX handlers
+├── storage.py                # Plain text file storage layer
+├── task_parser.py            # Parses inline task input syntax
+├── requirements.txt          # Python dependencies
+├── templates/
+│   ├── base.html             # Layout, CSS, settings UI
+│   ├── index.html            # Main task view and keyboard navigation
+│   ├── projects.html         # Project management
+│   ├── flags.html            # Flag listing and deletion
+│   └── archive.html          # Archived tasks and projects
+├── tests/
+│   ├── test_unit.py
+│   └── test_integration.py
+└── task-manager-vscode-v2/   # VS Code extension (wraps the Python app)
 ```
 
 ---
 
-## Quick Start (Dev)
+## Running
 
 ```bash
-git clone https://github.com/i-mohit-a/task-manager.git
-cd task-manager
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-./deploy.sh --dev --start
+TASKMANAGER_DEV=1 python3 -m uvicorn app:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-On first run, `deploy.sh` adds entries to `/etc/hosts` and prompts for your sudo password once.
+Open: http://127.0.0.1:8000
 
-Open: http://dev.taskmanager.local
-
-```bash
-./deploy.sh --dev --stop       # stop
-./deploy.sh --dev --restart    # restart
-```
+`TASKMANAGER_DEV=1` makes the app read/write `tasks.txt` and `tasks.archive.txt` in the project directory. Without it, the app uses `~/Library/Application Support/TaskManager/tasks.txt`.
 
 ---
 
-## Production Deploy
+## VS Code Extension
 
-```bash
-./deploy.sh --prd
-```
+The extension starts the Python server automatically and opens the app inside a VS Code panel.
 
-This will:
+**Install:**
 
-- Add `/etc/hosts` entries (prompts for sudo once if not already set)
-- Copy all app files to `~/.local/taskmanager/`
-- Create a virtual environment and install dependencies (first run only)
-- Install a launchd LaunchAgent for the app (auto-starts at login)
-- Install a launchd LaunchAgent for Caddy (auto-starts at login)
-- Back up the previous version before updating
-- Start both services
+1. VS Code → Extensions panel → `···` menu → `Install from VSIX`
+2. Pick `task-manager-vscode-v2/task-manager-v2-0.1.0.vsix`
 
-Open: http://taskmanager.local
+**Use:**
 
-```bash
-./deploy.sh --prd --restart    # restart without redeploying
-```
+Open the command palette (`⌘⇧P`) → `Task Manager: Open`
 
-Logs:
-
-```bash
-cat /tmp/taskmanager.log
-cat /tmp/taskmanager.err
-cat /tmp/taskmanager-caddy.log
-```
+The extension starts `uvicorn` on port 17823. The panel is a full VS Code webview — copy/paste and all keyboard shortcuts work normally.
 
 ---
 
-## URLs and Ports
+## Storage
 
-Both modes can run simultaneously. Caddy routes each domain to the correct port.
+Tasks are stored in plain text files:
 
-| Mode       | URL                          | Internal port |
-|------------|------------------------------|---------------|
-| Dev        | http://dev.taskmanager.local | 8001          |
-| Production | http://taskmanager.local     | 8000          |
+| Mode        | File                                                                        |
+|-------------|-----------------------------------------------------------------------------|
+| Dev         | `tasks.txt` and `tasks.archive.txt` in the project directory               |
+| Production  | `~/Library/Application Support/TaskManager/tasks.txt` (and `.archive.txt`) |
+
+The format is human-readable and can be edited directly. The server reloads automatically when the file changes on disk.
 
 ---
 
 ## Pages
 
-| Page    | Path       |
-|---------|------------|
-| Tasks   | `/`        |
+| Page     | Path        |
+|----------|-------------|
+| Tasks    | `/`         |
 | Projects | `/projects` |
-| Flags   | `/flags`   |
-| Archive | `/archive` |
-
----
-
-## Database
-
-| Mode        | Location                                               |
-|-------------|--------------------------------------------------------|
-| Dev         | `tasks.db` in project directory                        |
-| Production  | `~/Library/Application Support/TaskManager/tasks.db`  |
-
-Schema is auto-created on first run. Migrations are applied automatically on startup.
+| Flags    | `/flags`    |
+| Archive  | `/archive`  |
 
 ---
 
@@ -126,47 +95,47 @@ Schema is auto-created on first run. Migrations are applied automatically on sta
 
 ### Projects
 
-Tasks are organised into projects. Each project has its own task list on the home page with a quick-add input.
+Tasks are organised into projects. Each project has its own task list on the home page.
 
-- Create projects from the Projects page or using the quick-add at the bottom of the project list
-- Archive a project from the Projects page — this also archives all its tasks
-- Archived projects and their tasks can be restored from the Archive page
-- Projects can be reordered; order persists across reloads
-- Both dev and production databases are kept separate
+- Create projects from the Projects page
+- Rename a project with `ee` or clicking `[e]`
+- Archive a project — also archives all its tasks
+- Archived projects and tasks can be restored from the Archive page
+- Reorder projects with `alt+↑` / `alt+↓`; order persists
 
 ---
 
 ### Tasks
 
-Each task belongs to a project and can have:
+Each task can have:
 
 - a title
 - a priority: `critical`, `major`, or `minor` (default: `minor`)
-- an effort estimate in hours (e.g. `~4h` or `~1.5h`)
+- an effort estimate in hours (e.g. `~4h`)
 - a start date and a due date
 - one or more flags (tags)
 - subtasks (up to 3 levels deep)
 
-Tasks display a one-letter priority badge, any flag badges, the title, effort, dates, and the creation date. Completed tasks show the completion date instead. Incomplete tasks always appear above completed tasks within their list.
+Incomplete tasks always appear above completed tasks within their list.
 
 ---
 
 ### Task Input Syntax
 
-All task fields can be set in a single text input when adding or editing a task:
+All task fields can be set in a single text input when adding or editing:
 
 ```
 task title [flag1] [flag2] !priority ~Nh >YYYY-MM-DD <YYYY-MM-DD
 ```
 
-| Part       | Syntax      | Example          | Notes                              |
-|------------|-------------|------------------|------------------------------------|
-| Title      | plain text  | `Fix signup bug` | anything not matched by other tokens |
-| Flag       | `[name]`    | `[auth]`         | any word in brackets; multiple allowed |
-| Priority   | `!level`    | `!critical`      | critical, major, or minor; default is minor |
-| Effort     | `~Nh`       | `~4h` `~1.5h`    | hours prefixed with `~`            |
-| Start date | `>date`     | `>2026-03-15`    | YYYY-MM-DD format                  |
-| Due date   | `<date`     | `<2026-03-31`    | YYYY-MM-DD format                  |
+| Part       | Syntax     | Example         | Notes                                  |
+|------------|------------|-----------------|----------------------------------------|
+| Title      | plain text | `Fix signup bug`| anything not matched by other tokens  |
+| Flag       | `[name]`   | `[auth]`        | any word in brackets; multiple allowed |
+| Priority   | `!level`   | `!critical`     | `critical`, `major`, or `minor`        |
+| Effort     | `~Nh`      | `~4h`           | hours prefixed with `~`               |
+| Start date | `>date`    | `>2026-03-10`   | YYYY-MM-DD                             |
+| Due date   | `<date`    | `<2026-03-31`   | YYYY-MM-DD                             |
 
 Token order does not matter. Example:
 
@@ -180,134 +149,116 @@ Fix signup bug [auth] [backend] !critical ~2h >2026-03-10 <2026-03-15
 
 Tasks can have subtasks up to 3 levels deep (level 0 is root).
 
-- Press `ss` on any non-maximum-depth task to add a subtask inline
-- Subtasks are indented visually under their parent
-- Completing a parent also completes all its incomplete subtasks, stamped with the same timestamp
+- Press `ss` on any task to add a subtask inline
+- Completing a parent also completes all incomplete subtasks (same timestamp)
 - Undoing a parent reverts only subtasks completed at that same timestamp
-- Archiving or restoring a task also archives or restores all its subtasks
+- A subtask cannot be marked undone if its parent is still completed
+- Archiving or restoring a task cascades to all its subtasks
 
 ---
 
 ### Completing Tasks
 
-Toggle done or undone via `dd` or clicking `[done]` / `[undo]`.
-
-When marked done, the task moves to the bottom of the list and the completion date is shown. Undoing restores it above completed tasks.
+Toggle done/undone with `dd` or clicking `[done]` / `[undo]`. When marked done the task moves below the new-task input line and shows the completion date.
 
 ---
 
 ### Editing Tasks
 
-Press `ee` or click `[edit]` to edit a task inline. All current values are pre-filled in the same input syntax. Press Enter to save, Escape to cancel.
-
-Flags not present in the edited input are removed; new flags are added automatically.
+Press `ee` or click `[edit]` to edit inline. All current values are pre-filled using the same input syntax. Press Enter to save, Escape to cancel. Flags not present in the edited input are removed automatically.
 
 ---
 
 ### Flags
 
-Flags are free-form tags applied to tasks. Each flag name gets a consistent colour (hash-based, 8 colour options) shown as a small badge on the task row.
+Free-form tags applied to tasks. Each flag name gets a consistent colour (8 options) shown as a badge.
 
-- Add flags using `[flagname]` in the task input
-- Multiple flags per task are allowed
+- Add flags with `[flagname]` in the task input
 - Remove a flag by editing the task and omitting it
-- All flags are listed on the Flags page (`/flags`)
-- Flags can be deleted from the Flags page — deletion removes the flag from all tasks
-- Flags are shared across all projects
+- View all flags at `/flags`; deleting a flag there removes it from all tasks
 
 ---
 
 ### Archiving
 
-Press `xx` or click `[x]` to archive a task. Archived tasks are removed from the main view but not deleted.
-
-- Archiving a task also archives all its subtasks
-- Archived tasks appear at `/archive`, grouped by project
-- Click `[restore]` on the archive page to restore a task and all its subtasks
+Press `xx` or click `[x]` to archive a task and all its subtasks. Archived tasks appear at `/archive` and can be restored.
 
 ---
 
 ### Sorting
 
-Each project header has three sort controls:
+Each project header has sort controls:
 
-- `[sort:priority]` — sorts by priority (critical first), completed tasks last
-- `[sort:effort]` — sorts by total effort hours (highest first), completed tasks last
-- `[sort:tag]` — prompts for a flag name, floats tasks with that flag to the top
+- `[sort:priority]` — critical first, completed tasks last
+- `[sort:effort]` — highest effort first, completed tasks last
+- `[sort:tag]` — prompts for a flag name, floats matching tasks to the top
 
-Sorting is client-side only and does not persist on reload.
+Sorting is client-side only and resets on page reload.
 
 ---
 
 ### Moving Tasks
 
-Press `alt+up` / `alt+down` to reorder tasks. Positions persist across reloads.
+Press `alt+↑` / `alt+↓` to reorder tasks. Positions persist.
 
-Moving within the same level swaps with the sibling above or below.
-
-Moving across levels:
-
-- Moving up into a subtree makes the task the last child of that subtree, one level per keypress
-- Moving down at the bottom of a subtree de-nests the task one level, placing it after its parent
-- Moving up at the top of a subtree de-nests the task one level, placing it before its parent
-
-Tasks cannot be moved across projects. Tasks carry their subtrees when moved.
+- Moving within the same level swaps with the adjacent sibling
+- Moving across levels nests or de-nests the task one level per keypress
+- Tasks carry their subtrees when moved
+- Tasks cannot be moved across projects
 
 ---
 
 ### Multi-Select
 
-Hold `shift+up` / `shift+down` to extend the selection across multiple tasks. Selected rows are highlighted. `alt+up` / `alt+down` moves all selected tasks together.
-
-Press Escape to clear the selection.
+Hold `shift+↑` / `shift+↓` to extend the selection. `alt+↑` / `alt+↓` moves all selected tasks together. Press Escape to clear.
 
 ---
 
 ### Quick Add
 
-Each project on the home page has a quick-add input positioned just above any completed tasks. Press `nn` to focus it, or press the down arrow when on the last incomplete task.
-
-Type using the inline syntax and press Enter to add. The input auto-grows for long text. Press Escape to clear and dismiss.
+Each project has a quick-add input positioned just above any completed tasks. Press `nn` to focus it. Type using the inline syntax and press Enter to add. Press Escape to clear and dismiss.
 
 ---
 
 ### Settings
 
-A settings panel in the top-right corner (gear icon) provides two toggles, both persisted in localStorage:
+A settings panel (gear icon, top-right) with three toggles, all persisted in `localStorage`:
 
-- Font size — compact mode reduces the UI to a smaller font
-- Task lines — show a dotted separator line under each task row
-
-Hovering over a task row always shows the separator line regardless of the setting.
+| Toggle     | Effect                                    |
+|------------|-------------------------------------------|
+| Font size  | Compact mode — smaller font throughout    |
+| Task lines | Show a separator line under each task row |
+| Dense      | Tighter line spacing                      |
 
 ---
 
 ### Keyboard Shortcuts
 
-All shortcuts work when no input is focused. Double-key shortcuts (`dd`, `ee`, `ss`, `xx`, `nn`) require both keypresses within 500ms.
+Double-key shortcuts (`dd`, `ee`, `ss`, `xx`, `nn`) require both keypresses within 500ms. All shortcuts work when no input is focused.
 
-Home page:
+**Home page (`/`)**
 
-| Key              | Action                                   |
-|------------------|------------------------------------------|
-| up / down        | Move cursor                              |
-| Home             | Jump to first task                       |
-| End              | Jump to last task                        |
-| shift + up/down  | Extend selection                         |
-| alt + up/down    | Move task up or down (persisted)         |
-| dd               | Toggle task done / undone                |
-| ee               | Edit task inline                         |
-| ss               | Add subtask                              |
-| xx               | Archive task                             |
-| nn               | Focus quick-add for current project      |
-| Escape           | Clear selection, cancel edit or subtask  |
+| Key            | Action                                                        |
+|----------------|---------------------------------------------------------------|
+| `↑` / `↓`      | Move cursor linearly through all rows and quick-add inputs    |
+| `Home`         | Jump to first task                                            |
+| `End`          | Jump to last task                                             |
+| `shift+↑/↓`    | Extend selection                                              |
+| `alt+↑/↓`      | Move task up or down (persisted)                              |
+| `dd`           | Toggle task done / undone                                     |
+| `ee`           | Edit task inline                                              |
+| `ss`           | Add subtask                                                   |
+| `xx`           | Archive task                                                  |
+| `nn`           | Focus quick-add for current project                           |
+| `Escape`       | Clear selection, cancel edit or subtask                       |
 
-Projects page:
+**Projects page (`/projects`)**
 
-| Key              | Action                                   |
-|------------------|------------------------------------------|
-| up / down        | Move cursor                              |
-| shift + up/down  | Extend selection                         |
-| alt + up/down    | Reorder selected projects (persisted)    |
-| nn               | Focus new project input                  |
-| xx               | Archive project at cursor                |
+| Key            | Action                                  |
+|----------------|-----------------------------------------|
+| `↑` / `↓`      | Move cursor                             |
+| `shift+↑/↓`    | Extend selection                        |
+| `alt+↑/↓`      | Reorder selected projects (persisted)   |
+| `ee`           | Rename project at cursor                |
+| `nn`           | Focus new project input                 |
+| `xx`           | Archive project at cursor               |
